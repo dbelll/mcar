@@ -1,0 +1,8 @@
+timestamp
+gridsize
+threadblocksize
+dynsmemperblock
+stasmemperblock
+regperthread
+branch
+divergent_branch
