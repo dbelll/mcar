@@ -61,7 +61,7 @@ EXECUTABLE	:= mcar
 CUFILES		:= mcar.cu cuda_utils.cu
 
 # CUDA dependency files
-#CU_DEPS	:= header.h
+CU_DEPS	:= cuda_utils.h main.h
 
 # C/C++ source files (compiled with gcc / c++)
 CCFILES		:=  main.c
@@ -70,7 +70,7 @@ CCFILES		:=  main.c
 #INCLUDES = -I/home/dbelll/cuda_libraries/
 
 # compiler flags
-#CUDACCFLAGS = --profile --ptxas-options=-v --use_fast_math --maxrregcount=16
+CUDACCFLAGS = --profile --ptxas-options=-v --use_fast_math --maxrregcount=16
 
 ################################################################################
 # Rules and targets
