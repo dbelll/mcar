@@ -12,6 +12,8 @@
 
 #define DUMP_INITIAL_AGENTS
 
+//#define DEBUG_CALC_Q
+#define DEBUG_THETA_UPDATE
 #define DEBUG_CPU
 
 #ifdef DEBUG_CPU

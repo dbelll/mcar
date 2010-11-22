@@ -36,137 +36,194 @@ __constant__ float dc_accel[NUM_ACTIONS];
 
 #pragma mark CPU & GPU
 
+const char * string_for_action(unsigned a)
+{
+	return (a == 0) ? "LEFT" : ((a == 1) ? "NONE" : "RIGHT");
+}
+
+
 DUAL_PREFIX float sigmoid(float in)
 {
 	return 1.0/(1.0 + expf(-in));
 }
 
 // calculate the index for the bias weight for hidden node j
-DUAL_PREFIX unsigned iHiddenBias(unsigned j, unsigned num_states, unsigned num_actions, unsigned stride)
+DUAL_PREFIX unsigned iHiddenBias(unsigned j, unsigned stride)
 {
-	return j * (1 + num_actions + num_states) * stride;
+	return j * (1 + NUM_ACTIONS + STATE_SIZE) * stride;
 }
 
 
 // calculate the index for the bias weight for the output node
-DUAL_PREFIX unsigned iOutputBias(unsigned num_states, unsigned num_actions, unsigned num_hidden, unsigned stride)
+DUAL_PREFIX unsigned iOutputBias(unsigned num_hidden, unsigned stride)
 {
-	return num_hidden * (1 + num_states + num_actions) * stride;
+	return num_hidden * (1 + STATE_SIZE + NUM_ACTIONS) * stride;
 }
 
 // Calculate the output of the neural net for specified state and action.
-// Hidden node activation values are stored in activation array.
-DUAL_PREFIX float calc_Q(float *s, unsigned a, float *theta, unsigned stride, unsigned num_states, unsigned num_actions, unsigned num_hidden, float *activation)
+// Hidden node activation values are stored in activation array and the output Q value is returned.
+DUAL_PREFIX float calc_Q(float *s, unsigned a, float *theta, unsigned stride, unsigned num_hidden, float *activation)
 {
 	// loop over each hidden node
 	for (int j = 0; j < num_hidden; j++) {
 		// iBias is the index into theta for the bias weight for the hidden node j
-		unsigned iBias = j * (1 + num_actions + num_states) * stride;
+		unsigned iBias = j * (1 + NUM_ACTIONS + STATE_SIZE) * stride;
 		
 		// first calculate contribution of the bias for this hidden node
 		float in = theta[iBias] * -1.0f;
 		
 		// next add in the contributions for the state input nodes
-		for (int k = 0; k < num_states; k++) {
+		for (int k = 0; k < STATE_SIZE; k++) {
 			in += theta[iBias + (1+k) * stride] * s[k * stride];
 		}
 		
 		// finally, add in the contribution from the selected action
-		in += theta[iBias + (1 + num_states + a) * stride];
+		in += theta[iBias + (1 + STATE_SIZE + a) * stride];
 		
 		// apply sigmoid and store in the activation array
 		activation[j * stride] = sigmoid(in);
 
-#ifdef DEBUG_CPU
-		printf("calc_Q for state (%9.4f, %9.4f) and action %d\n", s[0], s[stride], a);
-		printf("input to hidden node %d is %9.4f and activation is %9.4f\n", j, in, activation[j*stride]);
+#ifdef DEBUG_CALC_Q
+		printf("calc_Q for state (%9.4f, %9.4f) and action %d ... ", s[0], s[stride], a);
+//		printf("input to hidden node %d is %9.4f and activation is %9.4f\n", j, in, activation[j*stride]);
 #endif
 	}
 	
 	// Calculate the output Q-value
 	// first add in the bias contribution
-	unsigned iBias = iOutputBias(num_states, num_actions, num_hidden, stride);
+	unsigned iBias = iOutputBias(num_hidden, stride);
 	float result = theta[iBias] * -1.0f;
 	
 	// loop over the hidden nodes and add in their contribution
 	for (int j = 0; j < num_hidden; j++) {
 		result += theta[iBias + (1+j) * stride] * activation[j * stride];
 	}
-#ifdef DEBUG_CPU
+#ifdef DEBUG_CALC_Q
 		printf("output activation is %9.4f\n", result);
 #endif
 	return result;
 }
 
-
-DUAL_PREFIX void update_stored_Q(float *Q, float *s, float *theta, unsigned stride, unsigned num_states, unsigned num_actions, unsigned num_hidden, float *activation)
+DUAL_PREFIX void accumulate_gradient(float *s, unsigned a, float *theta, unsigned stride, unsigned num_hidden, float *activation, float *W, float lambda, float gamma)
 {
-	for (int a = 0; a < num_actions; a++) {
-		Q[a * stride] = calc_Q(s, a, theta, stride, num_states, num_actions, num_hidden, activation);
+	// for gradients to output node, the gradient equals the activation of the hidden layer node (or bias) 
+	// first update the gradient for bias -> output
+	unsigned iOutBias = iOutputBias(num_hidden, stride);
+	W[iOutBias] = -1.0f + W[iOutBias] * lambda * gamma;
+	
+	// next update the gradients with respect to weights from hidden to output
+	for (int j = 0; j < num_hidden; j++) {
+		W[iOutBias + (1+j)*stride] = activation[j * stride] + W[iOutBias + (1+j)*stride] * lambda * gamma;
+	}
+
+	// update the gradients with respect to the weights from input to hidden
+	for (int j = 0; j < num_hidden; j++) {
+		// first the bias weight
+		unsigned iHidBias = iHiddenBias(j, stride);
+
+		// gradient of output i wrt wgt from input k to hidden j equals
+		// grad(in_j wrt wgt_kj) * grad(activation_j wrt in_j)     * grad(output activation wrt activation_j) = 
+		//    activation_k       * activation_j * (1-activation_j) *   wgt_ji
+		// The last two terms are only a function of j (and there is only one output node), so
+		// calculate grad to be the last two terms
+		float grad = activation[j*stride] * (1-activation[j*stride]) * theta[iOutBias + (1+j)*stride];
+		
+		// total gradient is the activation of the input node times grad
+		// The updated value includes eligibility trace of prior gradient
+		W[iHidBias] = -1.0f * grad + W[iHidBias] * lambda * gamma;
+		
+		// next the states
+		for (int k = 0; k < STATE_SIZE; k++) {
+			W[iHidBias + (k+1)*stride] = s[k * stride] * grad + W[iHidBias + (k+1)*stride] * lambda * gamma;
+		}
+		
+		// finally the actions
+		for (int k = 0; k < NUM_ACTIONS; k++) {
+			W[iHidBias + (k+STATE_SIZE+1)*stride] = ((a == k) ? 1.0f : 0.0f) * grad + W[iHidBias + (k+STATE_SIZE+1) * stride] * lambda * gamma;
+		}
 	}
 }
 
-// Update the weights in the neural net (theta's) using back-propagation of the output error, delta
+//DUAL_PREFIX void update_stored_Q(float *Q, float *s, float *theta, unsigned stride, unsigned num_states, unsigned num_actions, unsigned num_hidden, float *activation)
+//{
+//	for (int k = 0; k < num_actions; k++) {
+//		Q[k * stride] = calc_Q(s, k, theta, stride, num_hidden, activation);
+//	}
+//}
+
+// Update the weights in the neural net (theta's) using back-propagation of the output error
 // Current activation for the hidden layer is pre-calculated in activation
-DUAL_PREFIX void update_thetas(unsigned a, float *s, float *theta, float alpha, float delta, unsigned stride, unsigned num_states, unsigned num_actions, unsigned num_hidden, float *activation)
-{
-	// update the weights from the hidden layer to the output node
+DUAL_PREFIX void update_thetas(unsigned a, float *s, float *theta, float *W, float alpha, float error, unsigned stride, unsigned num_hidden, float *activation)
+{	
 	// First the bias
-	unsigned iOutBias = iOutputBias(num_states, num_actions, num_hidden, stride);
-	theta[iOutBias] += delta * alpha * -1.0f;
-	
+	// wgt_j_i += alpha * error * W_ji
+	unsigned iOutBias = iOutputBias(num_hidden, stride);
+	theta[iOutBias] += alpha * error * W[iOutBias];
+
+#ifdef DEBUG_THETA_UPDATE
+	printf("\nupdate_thetas for error of %6.4f\n", error);
+	printf("output bias: change is alpha (%6.4f) * error (%6.4f) * gradient (%6.4f) to get new value of %6.4f\n", alpha, error, W[iOutBias], theta[iOutBias]);
+#endif
+
 	// next update each weight from hidden nodes to output node
 	for (int j = 0; j < num_hidden; j++) {
-		theta[iOutBias + (1+j) * stride] += alpha * activation[j * stride] * delta;
+		// wgt_j_i += alpha * error * W_ji
+		theta[iOutBias + (1+j) * stride] += alpha * error * W[iOutBias + (1+j)*stride];
+#ifdef DEBUG_THETA_UPDATE
+	printf("hidden%d: change is alpha (%6.4f) * error (%6.4f) * gradient (%6.4f) to get new value of %6.4f\n", j, alpha, error, W[iOutBias + (1+j)*stride], theta[iOutBias + (1+j)*stride]);
+#endif
 	}
 	
 	// update weights from input layer to hidden layer for each node in hidden layer
 	for (int j = 0; j < num_hidden; j++) {
-		// calculate the delta value for this hidden node
-		float delta_j = theta[iOutBias + (1+j) * stride] * delta * activation[j * stride] * (1.0f - activation[j * stride]);
 		// first update the bias weight
-		unsigned iHidBias = iHiddenBias(j, num_states, num_actions, stride);
-		theta[iHidBias] += alpha * -1.0f * delta_j;
+		// wgt_k_j = alpha * error * W_k_j
+		unsigned iHidBias = iHiddenBias(j, stride);
+		theta[iHidBias] += alpha * error * W[iHidBias];
 		
 		// update the weights from the state nodes
-		for (int k = 0; k < num_states; k++) {
-			theta[iHidBias + (k+1) * stride] += alpha * s[k * stride] * delta_j;
+		for (int k = 0; k < STATE_SIZE; k++) {
+			// wgt_k_j = alpha * error * W_k_j
+			theta[iHidBias + (k+1) * stride] += alpha * error * W[iHidBias + (k+1)*stride];
 		}
 		
-		// update the weight for the action
-		theta[iHidBias + (1 + num_states + a) * stride] += alpha * delta_j;
+		// update the weight for the actions
+		for (int k = 0; k < NUM_ACTIONS; k++) {
+			theta[iHidBias + (1+k+STATE_SIZE)*stride] += alpha * error * W[iHidBias + (1+k+STATE_SIZE)*stride];
+		}
 	}
 }
 
 // Calculate the Q value for each action from the given state, storing the values in Q
 // Return the action with the highest Q value
-DUAL_PREFIX unsigned best_action(float *s, float *theta, float *Q, unsigned stride, unsigned num_states, unsigned num_actions, unsigned num_hidden, float *activation)
+DUAL_PREFIX float best_action(float *s, unsigned *pAction, float *theta, unsigned stride, unsigned num_hidden, float *activation)
 {
 	// calculate Q value for each action
-	Q[0] = calc_Q(s, 0, theta, stride, num_states, num_actions, num_hidden, activation);
 	unsigned best_action = 0;
-	float bestQ = Q[0];
-	for (int a = 1; a < num_actions; a++) {
-		Q[a*stride] = calc_Q(s, a, theta, stride, num_states, num_actions, num_hidden, activation);
-		if (Q[a*stride] > bestQ) {
-			bestQ = Q[a*stride];
-			best_action = a;
+	float bestQ = calc_Q(s, 0, theta, stride, num_hidden, activation);
+	for (int k = 1; k < NUM_ACTIONS; k++) {
+		float tempQ = calc_Q(s, k, theta, stride, num_hidden, activation);
+		if (tempQ > bestQ) {
+			bestQ = tempQ;
+			best_action = k;
 		}
 	}
-	return best_action;
+	*pAction = best_action;
+	return bestQ;
 }
 
-// choose action from current state, storing Q values for each possible action in Q, and 
-DUAL_PREFIX unsigned choose_action(float *s, float *theta, float epsilon, unsigned stride, float *Q, unsigned num_states, unsigned num_actions, unsigned num_hidden, float *activation, unsigned *seeds)
+// choose action from current state, return the Q value for the chosen action
+DUAL_PREFIX float choose_action(float *s, unsigned *pAction, float *theta, float epsilon, unsigned stride, unsigned num_hidden, float *activation, unsigned *seeds)
 {
-	// always calcualte the best action and store all the Q values for each action
-	unsigned a = best_action(s, theta, Q, stride, num_states, num_actions, num_hidden, activation);
 	if (epsilon > 0.0f && RandUniform(seeds, stride) < epsilon){
 		// choose random action
 		float r = RandUniform(seeds, stride);
-		a = r * num_actions;
+		*pAction = r * NUM_ACTIONS;
+		return calc_Q(s, *pAction, theta, stride, num_hidden, activation);
+	}else{
+		// choose the best action
+		return best_action(s, pAction, theta, stride, num_hidden, activation);
 	}
-	return a;
 }
 
 DUAL_PREFIX unsigned terminal_state(float *s)
@@ -176,22 +233,22 @@ DUAL_PREFIX unsigned terminal_state(float *s)
 
 // take an action from the current state, s, returning the reward and saving new state in s_prime
 // Note, s & s_prime may be the same location.
-DUAL_PREFIX float take_action(unsigned a, float *s, float *s_prime, unsigned stride, float *accel)
+DUAL_PREFIX float take_action(float *s, unsigned k, float *s_prime, unsigned stride, float *accel)
 {
 	// Forumlation of mountain car problem is from Sutton & Barto, 
 	// "Reinforcement Learning, An Introduction"
 	
 #ifdef DEBUG_CPU
-	printf("take_action %s from state (%9.4f, %9.4f)\n", a == 0 ? "LEFT" : (a == 1 ? "NONE" : "RIGHT"), s[0], s[stride]);
+	printf("take_action %s from state (%9.4f, %9.4f)\n", string_for_action(k), s[0], s[stride]);
 #endif
 
 	// normal reward is -1.0f per time step
 	float reward = -1.0f;
 	
 	// update velocity and limit it to within bounds	
-	s_prime[stride] = s[stride] + accel[a] + GRAVITY_FACTOR * cosf(GRAVITY_X_SCALE * s[0]);
+	s_prime[stride] = s[stride] + accel[k] + GRAVITY_FACTOR * cosf(GRAVITY_X_SCALE * s[0]);
 #ifdef DEBUG_CPU
-	printf("accel is %9.6f from force and %9.6f from gravity resulting in new velocity of %9.6f\n", accel[a], GRAVITY_FACTOR * cosf(GRAVITY_X_SCALE * s[0]), s_prime[stride]);
+	printf("accel is %9.6f from force and %9.6f from gravity resulting in new velocity of %9.6f\n", accel[k], GRAVITY_FACTOR * cosf(GRAVITY_X_SCALE * s[0]), s_prime[stride]);
 #endif
 	if (s_prime[stride] < MIN_VEL) s_prime[stride] = MIN_VEL;
 	if (s_prime[stride] > MAX_VEL) s_prime[stride] = MAX_VEL;
@@ -201,7 +258,7 @@ DUAL_PREFIX float take_action(unsigned a, float *s, float *s_prime, unsigned str
 	if (s_prime[0] >= MAX_X) reward = 0.0f;
 	if (s_prime[0] <= MIN_X) { s_prime[0] = MIN_X; s_prime[stride] = 0.0f;}
 #ifdef DEBUG_CPU
-	printf("new state is (%9.4f, %9.4f)\n", s_prime[0], s_prime[stride]);
+	printf("new state is (%9.4f, %9.4f) and reward is %9.4f\n", s_prime[0], s_prime[stride], reward);
 #endif
 	return reward;
 }
@@ -394,24 +451,44 @@ void free_agentsCPU(AGENT_DATA *ag)
 	}
 }
 
-
+/*
+	On entry, the agent data has the current state and chosen action based on current weights.
+ */
 void learning_session(AGENT_DATA *ag)
 {
 	// for each agent
 	for (int agent = 0; agent < _p.agents; agent++) {
 		// for each time step
 		for (int t = 0; t < _p.chunk_interval; t++) {
-			//accumulate_gradient(...
-			float reward = take_action(ag->action[agent], ag->s + agent, ag->s + agent, _p.agents, accel);
+			// Calculate Q_curr based on current state and action
+			// Activation values will be stored for use in updating the gradient
+			float Q_curr = calc_Q(ag->s + agent, ag->action[agent], ag->theta + agent, _p.agents, _p.hidden_nodes, ag->activation + agent);
+#ifdef DEBUG_CPU
+			printf("Q_curr is %9.4f based on state (%6.4f, %6.4f) and action %s\n", Q_curr, ag->s[agent], ag->s[agent + _p.agents], string_for_action(ag->action[agent]));
+#endif
+			
+			//accumulate_gradient uses current activations and weights to update the gradient array, W 
+			accumulate_gradient(ag->s + agent, ag->action[agent], ag->theta + agent, _p.agents, _p.hidden_nodes, ag->activation + agent, ag->W + agent, _p.lambda, _p.gamma);
+			
+			// take_action will calculate the new state based on the current state and current action,
+			// storing the new state in the agent, returning the reward
+			float reward = take_action(ag->s + agent, ag->action[agent], ag->s + agent, _p.agents, accel);
+
 			unsigned success = terminal_state(ag->s + agent);
 			if (success) randomize_state(ag->s + agent, ag->seeds + agent, _p.agents);
-			float Q_curr = ag->Q[agent + ag->action[agent] * _p.agents];
-			ag->action[agent] = choose_action(ag->s + agent, ag->theta + agent, _p.epsilon, _p.agents, ag->Q + agent, _p.state_size, _p.num_actions, _p.hidden_nodes, ag->activation + agent, ag->seeds + agent);
-			float Q_next = ag->Q[agent + ag->action[agent] * _p.agents];
-			float delta = reward + _p.gamma*Q_next - Q_curr;
-			update_thetas(ag->action[agent], ag->s + agent, ag->theta + agent, _p.alpha, delta, _p.agents, _p.state_size, _p.num_actions, _p.hidden_nodes, ag->activation + agent);
+
+			// choose the next action, storing it in the agent and returning the Q_next value
+			float Q_next = choose_action(ag->s + agent, ag->action + agent, ag->theta + agent, _p.epsilon, _p.agents, _p.hidden_nodes, ag->activation + agent, ag->seeds + agent);
+#ifdef DEBUG_CPU
+			printf("Q_next is %9.4f based on state (%6.4f, %6.4f) and action %s\n", Q_next, ag->s[agent], ag->s[agent + _p.agents], string_for_action(ag->action[agent]));
+#endif
+			float error = reward + _p.gamma*Q_next - Q_curr;
+#ifdef DEBUG_CPU
+			printf("error is %9.4f\n", error);
+#endif
+			update_thetas(ag->action[agent], ag->s + agent, ag->theta + agent, ag->W + agent, _p.alpha, error, _p.agents, _p.hidden_nodes, ag->activation + agent);
 //			if (success) reset_trace(...
-			update_stored_Q(ag->Q + agent, ag->s + agent, ag->theta + agent, _p.agents, _p.state_size, _p.num_actions, _p.hidden_nodes, ag->activation + agent);
+//			update_stored_Q(ag->Q + agent, ag->s + agent, ag->theta + agent, _p.agents, _p.state_size, _p.num_actions, _p.hidden_nodes, ag->activation + agent);
 //			update_trace(...
 		}
 	}
@@ -420,7 +497,7 @@ void learning_session(AGENT_DATA *ag)
 // share is where the best agents will be selected and duplicated
 void share(AGENT_DATA *ag)
 {
-		
+	
 }
 
 void randomize_all_states(AGENT_DATA *ag)
@@ -428,9 +505,11 @@ void randomize_all_states(AGENT_DATA *ag)
 	// randomize state for all agents, deterine first action and 
 	for (int agent = 0; agent < _p.agents; agent++) {
 		randomize_state(ag->s + agent, ag->seeds + agent, _p.agents);
-		ag->action[agent] = choose_action(ag->s + agent, ag->theta + agent, _p.epsilon, _p.agents, ag->Q + agent, _p.state_size, _p.num_actions, _p.hidden_nodes, ag->activation + agent, ag->seeds + agent);
+		printf("randomize_state, state is now (%6.4f, %6.4f)\n", ag->s[agent], ag->s[agent + _p.agents]);
+		choose_action(ag->s + agent, ag->action + agent, ag->theta + agent, _p.epsilon, _p.agents, _p.hidden_nodes, ag->activation + agent, ag->seeds + agent);
 		// force activation values to be recalculated for the chosen action
-		calc_Q(ag->s + agent, ag->action[agent], ag->theta + agent, _p.agents, _p.state_size, _p.num_actions, _p.hidden_nodes, ag->activation + agent);
+		printf("chosen action will be %s\n", string_for_action(ag->action[agent]));
+		calc_Q(ag->s + agent, ag->action[agent], ag->theta + agent, _p.agents, _p.hidden_nodes, ag->activation + agent);
 		// update_trace(...
 	}
 }
