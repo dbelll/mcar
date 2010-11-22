@@ -17,6 +17,9 @@
 		104A968712993F6600DC5289 /* cuda_row_reduction.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = cuda_row_reduction.h; sourceTree = "<group>"; };
 		104A968812993F6600DC5289 /* cuda_utils.cu */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cuda; path = cuda_utils.cu; sourceTree = "<group>"; };
 		104A968912993F6600DC5289 /* cuda_utils.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = cuda_utils.h; sourceTree = "<group>"; };
+		104A96FA129951DD00DC5289 /* misc_utils.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = misc_utils.c; sourceTree = "<group>"; };
+		104A96FB129951DD00DC5289 /* misc_utils.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = misc_utils.h; sourceTree = "<group>"; };
+		104A97341299772C00DC5289 /* notes.txt */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = notes.txt; sourceTree = "<group>"; };
 		106FF7F5119EE68B000CD6C8 /* Makefile */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.make; path = Makefile; sourceTree = "<group>"; };
 		106FF80D119EE7F5000CD6C8 /* main.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = main.c; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -25,11 +28,6 @@
 		10294D9B11A1B93300AAF551 /* source */ = {
 			isa = PBXGroup;
 			children = (
-				104A968512993F6600DC5289 /* cuda_rand.cu */,
-				104A968612993F6600DC5289 /* cuda_row_reduction.cu */,
-				104A968712993F6600DC5289 /* cuda_row_reduction.h */,
-				104A968812993F6600DC5289 /* cuda_utils.cu */,
-				104A968912993F6600DC5289 /* cuda_utils.h */,
 				104A964D1298080900DC5289 /* main.h */,
 				106FF80D119EE7F5000CD6C8 /* main.c */,
 				10294C5111A1A01400AAF551 /* mcar.h */,
@@ -48,9 +46,25 @@
 			name = other;
 			sourceTree = "<group>";
 		};
+		104A96F9129951C400DC5289 /* utils */ = {
+			isa = PBXGroup;
+			children = (
+				104A96FA129951DD00DC5289 /* misc_utils.c */,
+				104A96FB129951DD00DC5289 /* misc_utils.h */,
+				104A968512993F6600DC5289 /* cuda_rand.cu */,
+				104A968612993F6600DC5289 /* cuda_row_reduction.cu */,
+				104A968712993F6600DC5289 /* cuda_row_reduction.h */,
+				104A968812993F6600DC5289 /* cuda_utils.cu */,
+				104A968912993F6600DC5289 /* cuda_utils.h */,
+			);
+			name = utils;
+			sourceTree = "<group>";
+		};
 		106FF7E9119EE654000CD6C8 = {
 			isa = PBXGroup;
 			children = (
+				104A97341299772C00DC5289 /* notes.txt */,
+				104A96F9129951C400DC5289 /* utils */,
 				10294D9B11A1B93300AAF551 /* source */,
 				10294D9C11A1B93D00AAF551 /* other */,
 			);

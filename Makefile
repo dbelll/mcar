@@ -61,10 +61,10 @@ EXECUTABLE	:= mcar
 CUFILES		:= mcar.cu cuda_utils.cu
 
 # CUDA dependency files
-CU_DEPS	:= cuda_utils.h main.h
+CU_DEPS	:= cuda_utils.h main.h misc_utils.h
 
 # C/C++ source files (compiled with gcc / c++)
-CCFILES		:=  main.c
+CCFILES		:=  main.c misc_utils.c
 
 # additional includes
 #INCLUDES = -I/home/dbelll/cuda_libraries/

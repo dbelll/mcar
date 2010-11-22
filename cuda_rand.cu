@@ -15,19 +15,19 @@
  */
 
 
-__device__ __host__ inline unsigned TausStep(unsigned &z, int S1, int S2, int S3, unsigned M)
+DUAL_PREFIX inline unsigned TausStep(unsigned &z, int S1, int S2, int S3, unsigned M)
 {
 	unsigned b = (((z << S1) ^ z) >> S2);
 	return z = (((z & M) << S3) ^ b);
 }
 
-__device__ __host__ inline unsigned LCGStep(unsigned &z, unsigned A, unsigned C)
+DUAL_PREFIX inline unsigned LCGStep(unsigned &z, unsigned A, unsigned C)
 {
 	return z = (A*z + C);
 }
 
 /* generate a random number, uses an array of 4 unsigned ints */
-__device__ __host__ inline float HybridTaus(unsigned *z, unsigned stride)
+DUAL_PREFIX inline float HybridTaus(unsigned *z, unsigned stride)
 {
 	return 2.3283064365387e-10 * (float)(
 		TausStep(z[0], 13, 19, 12, 4294967294UL) ^
@@ -37,7 +37,7 @@ __device__ __host__ inline float HybridTaus(unsigned *z, unsigned stride)
 	);
 }
 
-__device__ __host__ inline unsigned HybridTausui(unsigned *z, unsigned stride)
+DUAL_PREFIX inline unsigned HybridTausui(unsigned *z, unsigned stride)
 {
 	return (
 		TausStep(z[0], 13, 19, 12, 4294967294UL) ^
@@ -58,24 +58,24 @@ __device__ __host__ inline unsigned HybridTausui(unsigned *z, unsigned stride)
 //    u2 = r * __sinf(phi);
 //}
 
-__device__ __host__ inline void BoxMuller(float& u1, float& u2){
+DUAL_PREFIX inline void BoxMuller(float& u1, float& u2){
     float   r = sqrtf(-2.0f * logf(u1));
     float phi = 2 * PI * u2;
     u1 = r * cosf(phi);
     u2 = r * sinf(phi);
 }
 
-__device__ __host__ inline float RandUniform(unsigned *z, unsigned stride)
+DUAL_PREFIX inline float RandUniform(unsigned *z, unsigned stride)
 {
 	return HybridTaus(z, stride);
 }
 
-__device__ __host__ inline unsigned RandUniformui(unsigned *z, unsigned stride)
+DUAL_PREFIX inline unsigned RandUniformui(unsigned *z, unsigned stride)
 {
 	return HybridTausui(z, stride);
 }
 
-__device__ __host__ inline float RandNorm(unsigned *z, unsigned stride)
+DUAL_PREFIX inline float RandNorm(unsigned *z, unsigned stride)
 {
 	float u1 = RandUniform(z, stride);
 	float u2 = RandUniform(z, stride);

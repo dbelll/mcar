@@ -17,7 +17,7 @@
 #define MIN_VEL -0.07f
 #define MAX_VEL 0.07f
 
-#define ACTION_FACTOR 0.001f
+#define ACCEL_FACTOR 0.001f
 
 // GRAVITY acceleration = GRAVITY_FACTOR * cos(GRAVITY_X_SCALE * x)
 #define GRAVITY_FACTOR -0.0025
@@ -27,6 +27,13 @@
 #define DEFAULT_EPSILON 0.00f
 #define DEFAULT_GAMMA 0.90f
 #define DEFAULT_LAMBDA 0.70f
+
+#define DEFAULT_HIDDEN_NODES 1
+
+#define STATE_SIZE 2
+#define NUM_ACTIONS 3
+#define SEEDS_PER_AGENT 4
+
 
 /*
 	Parameters are stored in a large structure, including constant values
@@ -69,6 +76,7 @@ typedef struct{
 	unsigned num_wgts;		// total number of weights = 7*hidden_nodes + 1
 	unsigned num_actions;	// 3
 	unsigned state_size;	// 2 (x and x')
+	unsigned input_nodes;	// state_size + num_actions
 } PARAMS;
 
 
@@ -94,6 +102,8 @@ typedef struct{
 						//
 	float *W;			// sum of lambda * gamma * gradient of Q for each weight in neural net
 	float *s;			// current state x and x'
+	float *activation;	// activation values for hidden nodes - must be stored so they can
+						// be used during back propagation
 	float *Q;			// Q values for each action, filled when determining best action
 	unsigned *action;	// temp storage for action to be taken at the next action
 } AGENT_DATA;		// may hold either host or device pointers

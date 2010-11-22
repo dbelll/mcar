@@ -1,0 +1,16 @@
+Sharing when internal representations may different between agents.
+That is, can not just take the average parameters and get a good agent.
+
+1) Selection
+	Select the best agents from the population after testing.
+	Number selected will be a parameter.
+	Should somehow encourage variety in the selected group.
+	Duplicated agents should be modified slightly from the original.
+	
+2) Partition
+	Maintain an agent selection neural net.  Input nodes = the state variables and actions, outputs = 1 for each agent.  The output values are the expected squared error for using that agent to calculate the Q-value for current state and action.
+	Best action will be determined by first checking the agent selection net for the best agent (lowest output from the agent-selection net), then using that agent to determine the best action.
+	Agent-selection net will be modified during learning as follows:
+		All agents will predict the Q value for the current state and action.
+		After taking an action, the squared error will be calculated for each agent, and that represents the target values for the agent-selection net and is used to train it with back-propagation.
+	The learning of weights for the normal net should be modified to reduce the learning on nets that have high error rates for current state/action.  Something like multiply the alpha value by the ratio of that agent's expected squared error divided by the sum of all agents expected squared error.  Or have a certain number of agents that will be trained on the each time step and chose the agents with the lowest expected error for training.

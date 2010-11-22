@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "main.h"
 #include "cuda_utils.h"
 #include "./common/inc/cutil.h"
 #include "mcar.h"
@@ -28,6 +29,8 @@ void display_help()
 	printf("  --EPSILON             float value for epsilon, the exploration parameter\n");
 	printf("  --GAMMA               float value for gamma, the discount factor\n");
 	printf("  --LAMBDA              float value for lambda, the trace decay factor\n");
+
+	printf("  --HIDDEN_NODES        number of hidden nodes\n");
 	
 	printf("  --INIT_THETA_MIN		minimum of range of possible initial theta values\n");
 	printf("  --INIT_THETA_MAX		maximum of range of possible initial theta values\n");
@@ -38,7 +41,6 @@ void display_help()
 	
 	printf("  --TEST_INTERVAL       time steps between testing of agent's learning ability\n");
 	printf("  --TEST_REPS			duration of test in time steps\n");
-	printf("  --RESTART_INTERVAL    time steps between random restarts\n");
 	
 	printf("  --HELP                print this help message\n");
 	printf("default values will be used for any parameters not on command line\n");
@@ -79,6 +81,9 @@ PARAMS read_params(int argc, const char **argv)
 	p.gamma = GET_PARAMF("GAMMA", DEFAULT_GAMMA);
 	p.lambda = GET_PARAMF("LAMBDA", DEFAULT_LAMBDA);
 	
+	p.hidden_nodes = GET_PARAM("HIDDEN_NODES", DEFAULT_HIDDEN_NODES);
+	p.num_wgts = (1 + STATE_SIZE + NUM_ACTIONS) * p.hidden_nodes + (1 + p.hidden_nodes);
+	
 	p.run_on_CPU = GET_PARAM("RUN_ON_CPU", 1);
 	p.run_on_GPU = GET_PARAM("RUN_ON_GPU", 1);
 	p.no_print = PARAM_PRESENT("NO_PRINT");
@@ -97,7 +102,7 @@ PARAMS read_params(int argc, const char **argv)
 	if(p.chunk_interval > p.sharing_interval) p.chunk_interval = p.sharing_interval;
 	
 
-	// use value from command line if present
+	// use value from command line if present (for testing purposes)
 	p.chunk_interval = GET_PARAM("CHUNK_INTERVAL", p.chunk_interval);
 	if (p.chunk_interval > p.test_interval ||
 		p.chunk_interval > p.sharing_interval) {
@@ -131,8 +136,9 @@ PARAMS read_params(int argc, const char **argv)
 	p.chunks_per_test = p.test_interval / p.chunk_interval;
 	p.chunks_per_share = p.sharing_interval / p.chunk_interval;
 		
-	p.state_size = 2;	// x and x'
-	p.num_actions = 3;	// force left, no force, force right
+	p.state_size = STATE_SIZE;		// x and x'
+	p.num_actions = NUM_ACTIONS;	// left, none, and right
+	p.input_nodes = p.state_size + p.num_actions;
 	
 	printf("[POLE][TRIALS%7d][TIME_STEPS%7d][SHARING_INTERVAL%7d][AGENT_GROUP_SIZE%7d][ALPHA%7.4f]"
 		   "[EPSILON%7.4f][GAMMA%7.4f][LAMBDA%7.4f][TEST_INTERVAL%7d][TEST_REPS%7d][CHUNK_INTERVAL%7d]\n", 
@@ -145,6 +151,7 @@ PARAMS read_params(int argc, const char **argv)
 int main(int argc, const char **argv)
 {
 	PARAMS p = read_params(argc, argv);
+	set_params(p);
 
 	// Initialize agents on CPU and GPU
 	AGENT_DATA *agCPU = initialize_agentsCPU();

@@ -8,4 +8,14 @@
  */
 
 
-//#define VERBOSE
+#define VERBOSE
+
+#define DUMP_INITIAL_AGENTS
+
+#define DEBUG_CPU
+
+#ifdef DEBUG_CPU
+#define DUAL_PREFIX __host__
+#else
+#define DUAL_PREFIX __host__ __device__
+#endif
