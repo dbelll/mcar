@@ -163,10 +163,13 @@ int main(int argc, const char **argv)
 	if (p.run_on_CPU) {
 		rCPU = initialize_results();
 		run_CPU(agCPU, rCPU);
+		if (!p.no_print) display_results("CPU:", rCPU);
 	}
 	
 	if (p.run_on_GPU) {
 		rGPU = initialize_results();
+//		run_GPU(rGPU);
+		if (!p.no_print) display_results("GPU:", rGPU);
 	}
 	
 	

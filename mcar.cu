@@ -104,6 +104,13 @@ DUAL_PREFIX float calc_Q(float *s, unsigned a, float *theta, unsigned stride, un
 	return result;
 }
 
+DUAL_PREFIX void reset_gradient(float *W, unsigned stride, unsigned num_wgts)
+{
+	for (int i = 0; i < num_wgts; i++) {
+		W[i * stride] = 0.0f;
+	}
+}
+
 DUAL_PREFIX void accumulate_gradient(float *s, unsigned a, float *theta, unsigned stride, unsigned num_hidden, float *activation, float *W, float lambda, float gamma)
 {
 	// for gradients to output node, the gradient equals the activation of the hidden layer node (or bias) 
@@ -161,8 +168,8 @@ DUAL_PREFIX void update_thetas(unsigned a, float *s, float *theta, float *W, flo
 	theta[iOutBias] += alpha * error * W[iOutBias];
 
 #ifdef DEBUG_THETA_UPDATE
-	printf("\nupdate_thetas for error of %6.4f\n", error);
-	printf("output bias: change is alpha (%6.4f) * error (%6.4f) * gradient (%6.4f) to get new value of %6.4f\n", alpha, error, W[iOutBias], theta[iOutBias]);
+	printf("\nupdate_thetas for error of %9.7f\n", error);
+	printf("output bias: change is alpha (%9.7f) * error (%9.7f) * gradient (%9.7f) to get new value of %9.7f\n", alpha, error, W[iOutBias], theta[iOutBias]);
 #endif
 
 	// next update each weight from hidden nodes to output node
@@ -170,7 +177,7 @@ DUAL_PREFIX void update_thetas(unsigned a, float *s, float *theta, float *W, flo
 		// wgt_j_i += alpha * error * W_ji
 		theta[iOutBias + (1+j) * stride] += alpha * error * W[iOutBias + (1+j)*stride];
 #ifdef DEBUG_THETA_UPDATE
-	printf("hidden%d: change is alpha (%6.4f) * error (%6.4f) * gradient (%6.4f) to get new value of %6.4f\n", j, alpha, error, W[iOutBias + (1+j)*stride], theta[iOutBias + (1+j)*stride]);
+	printf("hidden%d: change is alpha (%9.7f) * error (%9.7f) * gradient (%9.7f) to get new value of %9.7f\n", j, alpha, error, W[iOutBias + (1+j)*stride], theta[iOutBias + (1+j)*stride]);
 #endif
 	}
 	
@@ -233,22 +240,22 @@ DUAL_PREFIX unsigned terminal_state(float *s)
 
 // take an action from the current state, s, returning the reward and saving new state in s_prime
 // Note, s & s_prime may be the same location.
-DUAL_PREFIX float take_action(float *s, unsigned k, float *s_prime, unsigned stride, float *accel)
+DUAL_PREFIX float take_action(float *s, unsigned a, float *s_prime, unsigned stride, float *accel)
 {
 	// Forumlation of mountain car problem is from Sutton & Barto, 
 	// "Reinforcement Learning, An Introduction"
 	
 #ifdef DEBUG_CPU
-	printf("take_action %s from state (%9.4f, %9.4f)\n", string_for_action(k), s[0], s[stride]);
+	printf("take_action %s from state (%9.4f, %9.4f)\n", string_for_action(a), s[0], s[stride]);
 #endif
 
 	// normal reward is -1.0f per time step
 	float reward = -1.0f;
 	
 	// update velocity and limit it to within bounds	
-	s_prime[stride] = s[stride] + accel[k] + GRAVITY_FACTOR * cosf(GRAVITY_X_SCALE * s[0]);
+	s_prime[stride] = s[stride] + accel[a] + GRAVITY_FACTOR * cosf(GRAVITY_X_SCALE * s[0]);
 #ifdef DEBUG_CPU
-	printf("accel is %9.6f from force and %9.6f from gravity resulting in new velocity of %9.6f\n", accel[k], GRAVITY_FACTOR * cosf(GRAVITY_X_SCALE * s[0]), s_prime[stride]);
+	printf("accel is %9.6f from force and %9.6f from gravity resulting in new velocity of %9.6f\n", accel[a], GRAVITY_FACTOR * cosf(GRAVITY_X_SCALE * s[0]), s_prime[stride]);
 #endif
 	if (s_prime[stride] < MIN_VEL) s_prime[stride] = MIN_VEL;
 	if (s_prime[stride] > MAX_VEL) s_prime[stride] = MAX_VEL;
@@ -258,7 +265,7 @@ DUAL_PREFIX float take_action(float *s, unsigned k, float *s_prime, unsigned str
 	if (s_prime[0] >= MAX_X) reward = 0.0f;
 	if (s_prime[0] <= MIN_X) { s_prime[0] = MIN_X; s_prime[stride] = 0.0f;}
 #ifdef DEBUG_CPU
-	printf("new state is (%9.4f, %9.4f) and reward is %9.4f\n", s_prime[0], s_prime[stride], reward);
+	printf("new state is (%9.6f, %9.6f) and reward is %9.6f\n", s_prime[0], s_prime[stride], reward);
 #endif
 	return reward;
 }
@@ -295,27 +302,28 @@ void dump_agent(AGENT_DATA *ag, unsigned agent)
 	printf("  FROM          TO       THETA       W  \n");
 	unsigned i = agent;
 	for (int h = 0; h < _p.hidden_nodes; h++) {
-		printf("    bias --> hidden%2d %9.4f %9.4f\n", h, ag->theta[i], ag->W[i]); i += _p.agents;
-		printf("      x  --> hidden%2d %9.4f %9.4f\n", h, ag->theta[i], ag->W[i]); i += _p.agents;
-		printf("      x' --> hidden%2d %9.4f %9.4f\n", h, ag->theta[i], ag->W[i]); i += _p.agents;
-		printf("    LEFT --> hidden%2d %9.4f %9.4f\n", h, ag->theta[i], ag->W[i]); i += _p.agents;
-		printf("    NONE --> hidden%2d %9.4f %9.4f\n", h, ag->theta[i], ag->W[i]); i += _p.agents;
-		printf("   RIGHT --> hidden%2d %9.4f %9.4f\n", h, ag->theta[i], ag->W[i]); i += _p.agents;
+		printf("    bias --> hidden%2d %9.6f %9.6f\n", h, ag->theta[i], ag->W[i]); i += _p.agents;
+		printf("      x  --> hidden%2d %9.6f %9.6f\n", h, ag->theta[i], ag->W[i]); i += _p.agents;
+		printf("      x' --> hidden%2d %9.6f %9.6f\n", h, ag->theta[i], ag->W[i]); i += _p.agents;
+		printf("    LEFT --> hidden%2d %9.6f %9.6f\n", h, ag->theta[i], ag->W[i]); i += _p.agents;
+		printf("    NONE --> hidden%2d %9.6f %9.6f\n", h, ag->theta[i], ag->W[i]); i += _p.agents;
+		printf("   RIGHT --> hidden%2d %9.6f %9.6f\n", h, ag->theta[i], ag->W[i]); i += _p.agents;
 	}
-	printf("    bias --> output   %9.4f %9.4f\n", ag->theta[i], ag->W[i]); i += _p.agents;
+	printf("    bias --> output   %9.6f %9.6f\n", ag->theta[i], ag->W[i]); i += _p.agents;
 	for (int h = 0; h < _p.hidden_nodes; h++) {
-		printf("hidden%2d --> output   %9.4f %9.4f\n", h, ag->theta[i], ag->W[i]); i += _p.agents;
+		printf("hidden%2d --> output   %9.6f %9.6f\n", h, ag->theta[i], ag->W[i]); i += _p.agents;
 	}
 
-	printf("\nCurrent State: x = %7.4f   x' = %7.4f\n", ag->s[agent], ag->s[agent + _p.agents]);
-	printf("ACTION  Q-value\n");
-	for (int action = 0; action < _p.num_actions; action++) {
-		(action == ag->action[agent]) ? printf("-->") : printf("   ");
-		printf("%3d  %9.6f\n", action, ag->Q[agent + action * _p.agents]);
-	}
+	printf("\nCurrent State: x = %9.6f  x' = %9.6f, stored action is %s\n", ag->s[agent], ag->s[agent + _p.agents], string_for_action(ag->action[agent]));
+//	printf("ACTION  Q-value\n");
+//	for (int action = 0; action < _p.num_actions; action++) {
+//		(action == ag->action[agent]) ? printf("-->") : printf("   ");
+//		printf("%3d  %9.6f\n", action, ag->Q[agent + action * _p.agents]);
+//	}
+
 	printf("HIDDEN NODE    ACTIVATION\n");
 	for (int j = 0; j < _p.hidden_nodes; j++) {
-		printf("   %3d      %9.4f\n", j, ag->activation[agent + j * _p.agents]);
+		printf("   %3d      %9.6f\n", j, ag->activation[agent + j * _p.agents]);
 	}
 	printf("\n");
 }
@@ -323,10 +331,12 @@ void dump_agent(AGENT_DATA *ag, unsigned agent)
 // print message and dump all agent data
 void dump_agents(const char *str, AGENT_DATA *ag)
 {
-	printf("%s\n", str);
+	printf("\n===================================================\n%s\n", str);
+	printf("---------------------------------------------------\n", str);
 	for (int agent = 0; agent < _p.agents; agent++) {
 		dump_agent(ag, agent);
 	}
+	printf("====================================================\n\n", str);
 }
 
 void dump_one_agent(const char *str, AGENT_DATA *ag)
@@ -338,7 +348,26 @@ void dump_one_agent(const char *str, AGENT_DATA *ag)
 
 RESULTS *initialize_results()
 {
-	return NULL;
+	RESULTS *r = (RESULTS *)malloc(sizeof(RESULTS));
+	r->avg_steps = (float *)malloc(_p.num_tests * sizeof(float));
+	return r;
+}
+
+void free_results(RESULTS *r)
+{
+	if (r){
+		if (r->avg_steps) free(r->avg_steps);
+		free(r);
+	}
+}
+
+void display_results(const char *str, RESULTS *r)
+{
+	printf("%s \n", str);
+	printf("    TEST  Avg Steps\n");
+	for (int i = 0; i < _p.num_tests; i++) {
+		printf("   [%4d]%9.0f\n", i, r->avg_steps[i]);
+	}
 }
 
 // generate random seeds for the sepecified number of agents
@@ -358,7 +387,7 @@ unsigned *create_seeds(unsigned num_agents)
 float *create_theta(unsigned num_agents, unsigned num_wgts, float theta_min, float theta_max)
 {
 #ifdef VERBOSE
-	printf("create_theta for %d agents and %d weights in range %6.4f to %6.4f\n", num_agents, num_wgts, theta_min, theta_max);
+	printf("create_theta for %d agents and %d weights in range %9.7f to %9.7f\n", num_agents, num_wgts, theta_min, theta_max);
 #endif
 	float *theta = (float *)malloc(num_agents * num_wgts * sizeof(float));
 	for (int i = 0; i < num_agents * num_wgts; i++) {
@@ -456,41 +485,62 @@ void free_agentsCPU(AGENT_DATA *ag)
  */
 void learning_session(AGENT_DATA *ag)
 {
-	// for each agent
-	for (int agent = 0; agent < _p.agents; agent++) {
-		// for each time step
-		for (int t = 0; t < _p.chunk_interval; t++) {
+	// for each time step
+	for (int t = 0; t < _p.chunk_interval; t++) {
+
+#ifdef VERBOSE
+		printf("\n*****************************************\n");
+		printf(  "************ TIME STEP %d ****************\n", t);
+		printf(  "*****************************************\n");
+#endif
+
+		// for each agent
+		for (int agent = 0; agent < _p.agents; agent++) {
+#ifdef DEBUG_CPU
+			printf("[[ AGENT %d ]]\n", agent);
+#endif
 			// Calculate Q_curr based on current state and action
 			// Activation values will be stored for use in updating the gradient
 			float Q_curr = calc_Q(ag->s + agent, ag->action[agent], ag->theta + agent, _p.agents, _p.hidden_nodes, ag->activation + agent);
 #ifdef DEBUG_CPU
-			printf("Q_curr is %9.4f based on state (%6.4f, %6.4f) and action %s\n", Q_curr, ag->s[agent], ag->s[agent + _p.agents], string_for_action(ag->action[agent]));
+			printf("Q_curr is %9.6f based on state (%9.6f, %9.6f) and action %s\n", Q_curr, ag->s[agent], ag->s[agent + _p.agents], string_for_action(ag->action[agent]));
 #endif
 			
 			//accumulate_gradient uses current activations and weights to update the gradient array, W 
 			accumulate_gradient(ag->s + agent, ag->action[agent], ag->theta + agent, _p.agents, _p.hidden_nodes, ag->activation + agent, ag->W + agent, _p.lambda, _p.gamma);
-			
+
 			// take_action will calculate the new state based on the current state and current action,
 			// storing the new state in the agent, returning the reward
 			float reward = take_action(ag->s + agent, ag->action[agent], ag->s + agent, _p.agents, accel);
+#ifdef DUMP_STATES
+			printf("[AGENT%3d] x = %9.6f  x' = %9.6f  after action = %s\n", agent, ag->s[agent], ag->s[agent + _p.agents], string_for_action(ag->action[agent]));
+#endif
 
 			unsigned success = terminal_state(ag->s + agent);
-			if (success) randomize_state(ag->s + agent, ag->seeds + agent, _p.agents);
+			if (success){
+//				printf("success at time step %d\n", t);
+				randomize_state(ag->s + agent, ag->seeds + agent, _p.agents);
+			}
 
 			// choose the next action, storing it in the agent and returning the Q_next value
 			float Q_next = choose_action(ag->s + agent, ag->action + agent, ag->theta + agent, _p.epsilon, _p.agents, _p.hidden_nodes, ag->activation + agent, ag->seeds + agent);
 #ifdef DEBUG_CPU
-			printf("Q_next is %9.4f based on state (%6.4f, %6.4f) and action %s\n", Q_next, ag->s[agent], ag->s[agent + _p.agents], string_for_action(ag->action[agent]));
+			printf("Q_next is %12.6f based on state (%9.6f, %9.6f) and action %s\n", Q_next, ag->s[agent], ag->s[agent + _p.agents], string_for_action(ag->action[agent]));
 #endif
 			float error = reward + _p.gamma*Q_next - Q_curr;
 #ifdef DEBUG_CPU
-			printf("error is %9.4f\n", error);
+			printf("error is %12.6f\n", error);
 #endif
 			update_thetas(ag->action[agent], ag->s + agent, ag->theta + agent, ag->W + agent, _p.alpha, error, _p.agents, _p.hidden_nodes, ag->activation + agent);
-//			if (success) reset_trace(...
+			if (success) reset_gradient(ag->W + agent, _p.agents, _p.num_wgts);
+		}	
+		
+#ifdef DUMP_AGENT_UPDATES
+		dump_agents("after update_thetas", ag);
+#endif
+			
 //			update_stored_Q(ag->Q + agent, ag->s + agent, ag->theta + agent, _p.agents, _p.state_size, _p.num_actions, _p.hidden_nodes, ag->activation + agent);
 //			update_trace(...
-		}
 	}
 }
 
@@ -505,13 +555,62 @@ void randomize_all_states(AGENT_DATA *ag)
 	// randomize state for all agents, deterine first action and 
 	for (int agent = 0; agent < _p.agents; agent++) {
 		randomize_state(ag->s + agent, ag->seeds + agent, _p.agents);
-		printf("randomize_state, state is now (%6.4f, %6.4f)\n", ag->s[agent], ag->s[agent + _p.agents]);
+//		printf("randomize_state, state is now (%9.6f, %9.6f)\n", ag->s[agent], ag->s[agent + _p.agents]);
 		choose_action(ag->s + agent, ag->action + agent, ag->theta + agent, _p.epsilon, _p.agents, _p.hidden_nodes, ag->activation + agent, ag->seeds + agent);
 		// force activation values to be recalculated for the chosen action
-		printf("chosen action will be %s\n", string_for_action(ag->action[agent]));
+//		printf("chosen action will be %s\n", string_for_action(ag->action[agent]));
 		calc_Q(ag->s + agent, ag->action[agent], ag->theta + agent, _p.agents, _p.hidden_nodes, ag->activation + agent);
 		// update_trace(...
 	}
+}
+
+float run_test(AGENT_DATA *ag)
+{
+	float total_steps = 0.0f;
+	
+	float save_s[STATE_SIZE];
+	unsigned save_action;			//**TODO** may not need to be saved
+	static float *junk_activation = NULL;
+	if(!junk_activation) junk_activation = (float *)malloc(_p.hidden_nodes * sizeof(float));
+	
+	// test all agents and average the result
+	for (int agent = 0; agent < _p.agents; agent++) {
+#ifdef TRACE_TEST
+		printf("Testing agent %d...\n", agent);
+#endif
+		// save agent state prior to testing
+		save_s[0] = ag->s[agent];
+		save_s[1] = ag->s[agent + _p.agents];
+		save_action = ag->action[agent];
+		
+		randomize_state(ag->s + agent, ag->seeds + agent, _p.agents);
+		int t;
+		unsigned action;
+		for (t = 0; t < _p.test_reps; t++) {
+			best_action(ag->s + agent, &action, ag->theta + agent, _p.agents, _p.hidden_nodes, junk_activation);			
+#ifdef TRACE_TEST
+			printf("[test%4d] state = (%9.6f, %9.6f) action will be %s\n", t, ag->s[agent], ag->s[agent + _p.agents], string_for_action(action));
+#endif
+			take_action(ag->s + agent, action, ag->s + agent, _p.agents, accel);
+			if (terminal_state(ag->s + agent)) {
+#ifdef TRACE_TEST
+				printf("Done at step %d!!!\n", t);
+#endif
+				break;
+			}
+		}
+#ifdef TRACE_TEST
+		if (t == _p.test_reps) printf("failure\n");
+#endif
+		total_steps += t;
+
+		//restore state and action
+		ag->s[agent] = save_s[0];
+		ag->s[agent + _p.agents] = save_s[1];
+		ag->action[agent] = save_action;
+	}
+	
+	return total_steps / float(_p.agents);
 }
 
 void run_CPU(AGENT_DATA *ag, RESULTS *r)
@@ -529,13 +628,19 @@ void run_CPU(AGENT_DATA *ag, RESULTS *r)
 	timing_feedback_header(_p.num_chunks);
 	randomize_all_states(ag);
 	
-	dump_agents("after initial randomization", ag);
-	
+#ifdef VERBOSE
+	dump_agents("prior to learning session", ag);
+#endif
+
 	for (int i = 0; i < _p.num_chunks; i++) {
+
 		timing_feedback_dot(i);
+		
 		learning_session(ag);
 		
-		dump_agents("after some learning...", ag);
+		if (0 == ((i+1) % _p.chunks_per_test)) {
+			r->avg_steps[i/_p.chunks_per_test] = run_test(ag);
+		}
 		
 		if ((_p.agent_group_size > 1) && 0 == ((i+1) % _p.chunks_per_share)) {
 			share(ag);
@@ -543,6 +648,11 @@ void run_CPU(AGENT_DATA *ag, RESULTS *r)
 	}
 
 	STOP_TIMER(timer, "run on CPU");
+
+#ifdef DUMP_FINAL_AGENTS
+	dump_agents("Final agents on CPU", ag);
+#endif
+
 }
 
 #pragma mark -

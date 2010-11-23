@@ -8,13 +8,18 @@
  */
 
 
-#define VERBOSE
+//#define VERBOSE
 
-#define DUMP_INITIAL_AGENTS
+//#define DUMP_INITIAL_AGENTS
+#define DUMP_FINAL_AGENTS
 
 //#define DEBUG_CALC_Q
-#define DEBUG_THETA_UPDATE
-#define DEBUG_CPU
+//#define DEBUG_THETA_UPDATE
+//#define DEBUG_CPU
+//#define DUMP_STATES
+//#define DUMP_AGENT_UPDATES
+
+//#define TRACE_TEST
 
 #ifdef DEBUG_CPU
 #define DUAL_PREFIX __host__

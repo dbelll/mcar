@@ -109,7 +109,7 @@ typedef struct{
 } AGENT_DATA;		// may hold either host or device pointers
 
 typedef struct{
-	float *avg_success;
+	float *avg_steps;
 } RESULTS;
 
 
