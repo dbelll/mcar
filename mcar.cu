@@ -618,9 +618,6 @@ void run_CPU(AGENT_DATA *ag, RESULTS *r)
 #ifdef VERBOSE
 	printf("\n==============================================\nrunning on CPU...\n");
 #endif
-#ifdef DUMP_INITIAL_AGENTS
-	dump_agents("Initial agents on CPU", ag);
-#endif
 	unsigned timer;
 	CREATE_TIMER(&timer);
 	START_TIMER(timer);
@@ -628,8 +625,8 @@ void run_CPU(AGENT_DATA *ag, RESULTS *r)
 	timing_feedback_header(_p.num_chunks);
 	randomize_all_states(ag);
 	
-#ifdef VERBOSE
-	dump_agents("prior to learning session", ag);
+#ifdef DUMP_INITIAL_AGENTS
+	dump_agents("Initial agents, prior to learning session", ag);
 #endif
 
 	for (int i = 0; i < _p.num_chunks; i++) {
