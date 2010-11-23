@@ -62,8 +62,9 @@ PARAMS read_params(int argc, const char **argv)
 	p.agents = p.trials * p.agent_group_size;
 	p.sharing_interval = GET_PARAM("SHARING_INTERVAL", p.time_steps);
 	
-	// set sharing interval to total time steps if only one agent
+	// set sharing interval to total time steps if only one agent, or if it exceeds the time steps
 	if (p.agents == 1) p.sharing_interval = p.time_steps;
+	if (p.sharing_interval > p.time_steps) p.sharing_interval = p.time_steps;
 	
 	// Total time steps must be an integer number of sharing intervals
 	if (p.agent_group_size > 1 && 0 != (p.time_steps % p.sharing_interval)){
@@ -82,7 +83,7 @@ PARAMS read_params(int argc, const char **argv)
 	p.lambda = GET_PARAMF("LAMBDA", DEFAULT_LAMBDA);
 	
 	p.hidden_nodes = GET_PARAM("HIDDEN_NODES", DEFAULT_HIDDEN_NODES);
-	p.num_wgts = (1 + STATE_SIZE + NUM_ACTIONS) * p.hidden_nodes + (1 + p.hidden_nodes);
+	p.num_wgts = NUM_ACTIONS * ((1 + STATE_SIZE) * p.hidden_nodes + (1 + p.hidden_nodes));
 	
 	p.run_on_CPU = GET_PARAM("RUN_ON_CPU", 1);
 	p.run_on_GPU = GET_PARAM("RUN_ON_GPU", 1);
@@ -91,11 +92,7 @@ PARAMS read_params(int argc, const char **argv)
 	p.test_interval = GET_PARAM("TEST_INTERVAL", p.time_steps);
 	p.test_reps = GET_PARAM("TEST_REPS", p.test_interval);
 	p.num_tests = p.time_steps / p.test_interval;
-	if (p.test_interval > p.time_steps){
-		printf("Inconsistent arguments: TEST_INTERVAL = %d is greater than TIME_STEPS = %d.\n",
-			   p.test_interval, p.time_steps);
-		exit(1);
-	}
+	if (p.test_interval > p.time_steps) p.test_interval = p.time_steps;
 	
 	// calculate chunk_interval as smallest of other intervals, or 
 	p.chunk_interval = p.test_interval;

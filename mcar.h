@@ -73,7 +73,7 @@ typedef struct{
 	unsigned chunks_per_test;	// calculated = test_interval / chunk_interval
 	
 	unsigned hidden_nodes;	// number of hidden nodes in the neural net used to calculate Q(s,a)
-	unsigned num_wgts;		// total number of weights = 7*hidden_nodes + 1
+	unsigned num_wgts;		// total number of weights = 12*hidden_nodes + 3
 	unsigned num_actions;	// 3
 	unsigned state_size;	// 2 (x and x')
 	unsigned input_nodes;	// state_size + num_actions
@@ -86,25 +86,25 @@ typedef struct{
 typedef struct{
 	unsigned *seeds;	// seeds for random number generator
 	float *theta;		// weights for the neural net organized as follows:
+						// LEFT Nerual Net
 						// bias -> hidden[0]
-						// x -> hidden[0]
-						// x' -> hidden[0]
-						// a[0] (negative acceleration) -> hidden[0]
-						// a[1] (no acceleration) -> hidden[1]
-						// a[2] (positive acceleration) -> hidden[2]
+						// x -> LEFT_NN hidden[0]
+						// x' -> LEFT_NN hidden[0]
 						// ... repeat for other hidden ...
-						// ... total of 6 x num_hidden ...
+						// ... total of 3 x num_hidden ...
 						// bias -> output
-						// hidden[0] -> output
+						// LEFT_NN hidden[0] -> output
 						// ... repeat for other hidden ...
-						// ... total of 1 = num_hidden ...
-						// ... grand total of 7 * num_hidden + 1 ...
+						// ... total of 1 + num_hidden ...
+						// ... grand total of 4 * num_hidden + 1 ...
+						//
+						// Repeat for NONE Neural Net and RIGHT Neural Net
+						// Grand total of 3 * (4 * num_hidden + 1) = 12*num_hidden + 3 weights
 						//
 	float *W;			// sum of lambda * gamma * gradient of Q for each weight in neural net
 	float *s;			// current state x and x'
 	float *activation;	// activation values for hidden nodes - must be stored so they can
 						// be used during back propagation
-	float *Q;			// Q values for each action, filled when determining best action
 	unsigned *action;	// temp storage for action to be taken at the next action
 } AGENT_DATA;		// may hold either host or device pointers
 
