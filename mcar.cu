@@ -76,9 +76,6 @@ DUAL_PREFIX unsigned offsetToOutputBias(unsigned stride, unsigned num_hidden)
 // Hidden node activation values are stored in activation array and the output Q value is returned.
 DUAL_PREFIX float calc_Q(float *s, unsigned a, float *theta, unsigned stride, unsigned num_hidden, float *activation)
 {
-	assert(stride == 16);
-	assert(num_hidden == 1);
-	
 	// adjust theta to point to beginning of this action's weights
 	theta += iActionStart(a, stride, num_hidden);
 	
@@ -121,7 +118,6 @@ DUAL_PREFIX float calc_Q(float *s, unsigned a, float *theta, unsigned stride, un
 
 DUAL_PREFIX void reset_gradient(float *W, unsigned stride, unsigned num_wgts)
 {
-	assert(stride == 16);
 	for (int i = 0; i < num_wgts; i++) {
 		W[i * stride] = 0.0f;
 	}
@@ -129,10 +125,6 @@ DUAL_PREFIX void reset_gradient(float *W, unsigned stride, unsigned num_wgts)
 
 DUAL_PREFIX void accumulate_gradient(float *s, unsigned a, float *theta, unsigned stride, unsigned num_hidden, unsigned num_wgts, float *activation, float *W, float lambda, float gamma)
 {
-	assert(num_hidden == 1);
-	assert(num_wgts == 15);
-	assert(stride == 16);
-
 	// First, decay all the existing gradients by lambda * gamma
 #ifdef DEBUG_GRADIENT_CALC
 	printf("all gradients after decay:\n");
@@ -219,8 +211,6 @@ DUAL_PREFIX void accumulate_gradient(float *s, unsigned a, float *theta, unsigne
 // Current activation for the hidden layer is pre-calculated in activation
 DUAL_PREFIX void update_thetas(float *s, float *theta0, float *W0, float alpha, float error, unsigned stride, unsigned num_hidden, float *activation)
 {	
-	assert(num_hidden == 1);
-	assert(stride == 16);
 	// Repeat for all actions
 	for (int a = 0; a < NUM_ACTIONS; a++) {
 		// adjust theta and W to point to start of weights/gradients for this action
@@ -276,9 +266,6 @@ DUAL_PREFIX void update_thetas(float *s, float *theta0, float *W0, float alpha, 
 // and storing the action in *pAction
 DUAL_PREFIX float best_action(float *s, unsigned *pAction, float *theta, unsigned stride, unsigned num_hidden, float *activation)
 {
-	assert(num_hidden == 1);
-	assert(stride == 16);
-
 	// calculate Q value for each action
 	unsigned best_action = 0;
 	float bestQ = calc_Q(s, 0, theta, stride, num_hidden, activation);
@@ -297,9 +284,6 @@ DUAL_PREFIX float best_action(float *s, unsigned *pAction, float *theta, unsigne
 // and store the action in *pAction
 DUAL_PREFIX float choose_action(float *s, unsigned *pAction, float *theta, float epsilon, unsigned stride, unsigned num_hidden, float *activation, unsigned *seeds)
 {
-	assert(num_hidden == 1);
-	assert(stride == 16);
-
 	if (epsilon > 0.0f && RandUniform(seeds, stride) < epsilon){
 		// choose random action
 		float r = RandUniform(seeds, stride);
@@ -320,8 +304,6 @@ DUAL_PREFIX unsigned terminal_state(float *s)
 // Note, s & s_prime may be the same location.
 DUAL_PREFIX float take_action(float *s, unsigned a, float *s_prime, unsigned stride, float *accel)
 {
-	assert(stride == 16);
-
 	// Forumlation of mountain car problem is from Sutton & Barto, 
 	// "Reinforcement Learning, An Introduction"
 	
@@ -393,7 +375,7 @@ void dump_agent(AGENT_DATA *ag, unsigned agent)
 			printf("        hidden%2d --> output   %9.6f %9.6f\n", h, ag->theta[i], ag->W[i]); i += _p.agents;
 		}
 	}
-
+	printf("fitness = %5.0f\n", ag->fitness[agent]);
 	printf("\nCurrent State: x = %9.6f  x' = %9.6f, stored action is %s\n", ag->s[agent], ag->s[agent + _p.agents], string_for_action(ag->action[agent]));
 
 	printf("        HIDDEN NODE    ACTIVATION\n");
@@ -424,14 +406,18 @@ void dump_one_agent(const char *str, AGENT_DATA *ag)
 RESULTS *initialize_results()
 {
 	RESULTS *r = (RESULTS *)malloc(sizeof(RESULTS));
-	r->avg_steps = (float *)malloc(_p.num_tests * sizeof(float));
+	r->avg_fitness = (float *)malloc(_p.num_tests * sizeof(float));
+	r->best_fitness = (float *)malloc(_p.num_tests * sizeof(float));
+	r->best_agent = (unsigned *)malloc(_p.num_tests * sizeof(unsigned));
 	return r;
 }
 
 void free_results(RESULTS *r)
 {
 	if (r){
-		if (r->avg_steps) free(r->avg_steps);
+		if (r->avg_fitness) free(r->avg_fitness);
+		if (r->best_fitness) free(r->best_fitness);
+		if (r->best_agent) free(r->best_agent);
 		free(r);
 	}
 }
@@ -441,7 +427,7 @@ void display_results(const char *str, RESULTS *r)
 	printf("%s \n", str);
 	printf("    TEST  Avg Steps\n");
 	for (int i = 0; i < _p.num_tests; i++) {
-		printf("   [%4d]%9.0f\n", i, r->avg_steps[i]);
+		printf("   [%4d]%8.0f, %8.0f, %8d\n", i*_p.test_interval, r->avg_fitness[i], r->best_fitness[i], r->best_agent[i]);
 	}
 }
 
@@ -494,16 +480,6 @@ float *create_states(unsigned num_agents, unsigned state_size, unsigned *seeds)
 	return states;
 }
 
-//float *create_Q(unsigned num_agents, unsigned num_actions)
-//{
-//#ifdef VERBOSE
-//	printf("create_Q for %d agents and %d actions\n", num_agents, num_actions);
-//#endif
-//	float *Q = (float *)malloc(num_agents * num_actions * sizeof(float));
-//	for (int i = 0; i < num_agents * num_actions; i++) Q[i] = 0.0f;
-//	return Q;
-//}
-//
 unsigned *create_actions(unsigned num_agents, unsigned num_actions)
 {
 #ifdef VERBOSE
@@ -512,6 +488,13 @@ unsigned *create_actions(unsigned num_agents, unsigned num_actions)
 	unsigned *actions = (unsigned *)malloc(num_agents * num_actions * sizeof(unsigned));
 	for (int i = 0; i < num_agents * num_actions; i++) actions[i] = num_actions; // not valid value
 	return actions;
+}
+
+float *create_fitness(unsigned num_agents)
+{
+	float *fitness = (float *)malloc(num_agents * sizeof(float));
+	for (int i = 0; i < num_agents; i++) fitness[i] = MAX_FITNESS;
+	return fitness;
 }
 
 float *create_activation(unsigned num_agents, unsigned num_hidden)
@@ -536,6 +519,7 @@ AGENT_DATA *initialize_agentsCPU()
 //	ag->Q = create_Q(_p.agents, _p.num_actions);
 	ag->action = create_actions(_p.agents, _p.num_actions);
 	ag->activation = create_activation(_p.agents, _p.hidden_nodes);
+	ag->fitness = create_fitness(_p.agents);
 	return ag;
 }
 
@@ -550,6 +534,8 @@ void free_agentsCPU(AGENT_DATA *ag)
 		if (ag->W) free(ag->W);
 		if (ag->s) free(ag->s);
 		if (ag->action) free(ag->action);
+		if (ag->activation) free(ag->activation);
+		if (ag->fitness) free(ag->fitness);
 		free(ag);
 	}
 }
@@ -596,7 +582,7 @@ void learning_session(AGENT_DATA *ag)
 
 			unsigned success = terminal_state(ag->s + agent);
 			if (success){
-				printf("success for ageent %d at time step %d\n", agent, t);
+//				printf("success for ageent %d at time step %d\n", agent, t);
 				randomize_state(ag->s + agent, ag->seeds + agent, _p.agents);
 			}
 
@@ -628,10 +614,42 @@ void learning_session(AGENT_DATA *ag)
 	}
 }
 
-// share is where the best agents will be selected and duplicated
-void share(AGENT_DATA *ag)
+// copy theta valuels from agent iFrom and over-write agent iTo
+void copy_theta(AGENT_DATA *ag, unsigned iFrom, unsigned iTo, unsigned num_wgts, unsigned stride)
 {
-	
+	for (int i = 0; i < num_wgts; i++) {
+		ag->theta[iTo + i * stride] = ag->theta[iFrom + i*stride];
+	}
+}
+
+// share is where the best agents will be selected and duplicated
+void share(AGENT_DATA *ag, float share_best_pct, unsigned agent_group_size, unsigned num_agents, unsigned num_wgts)
+{
+//	printf("share...\n");
+	for (int group = 0; group < num_agents / agent_group_size; group++) {
+		unsigned iGroup = group * agent_group_size;
+		// determine the best agent in this group
+		unsigned iBest = 0;
+		float best_fitness = ag->fitness[iGroup];
+		for (int a = 1; a < agent_group_size; a++) {
+			if (ag->fitness[iGroup + a] < best_fitness) {
+				best_fitness = ag->fitness[iGroup + a];
+				iBest = a;
+			}
+		}
+
+//		printf("agent %d is the best in group %d\n", iGroup + iBest, group);
+		
+		// now copy the best agents to the others with probability share_best_pct
+		for (int a = 0; a < agent_group_size; a++) {
+			if (a == iBest) continue;
+			float r = RandUniform(ag->seeds + iGroup + a, num_agents);
+			if (r < share_best_pct) {
+//				printf("copy weights from agent %d to agent %d\n", iGroup + iBest, iGroup + a);
+				copy_theta(ag, iBest, iGroup + a, num_wgts, num_agents);
+			}
+		}
+	}
 }
 
 void randomize_all_states(AGENT_DATA *ag)
@@ -639,6 +657,7 @@ void randomize_all_states(AGENT_DATA *ag)
 	// randomize state for all agents, deterine first action and 
 	for (int agent = 0; agent < _p.agents; agent++) {
 		randomize_state(ag->s + agent, ag->seeds + agent, _p.agents);
+		reset_gradient(ag->W + agent, _p.agents, _p.num_wgts);
 //		printf("randomize_state, state is now (%9.6f, %9.6f)\n", ag->s[agent], ag->s[agent + _p.agents]);
 		choose_action(ag->s + agent, ag->action + agent, ag->theta + agent, _p.epsilon, _p.agents, _p.hidden_nodes, ag->activation + agent, ag->seeds + agent);
 		// force activation values to be recalculated for the chosen action
@@ -648,9 +667,11 @@ void randomize_all_states(AGENT_DATA *ag)
 	}
 }
 
-float run_test(AGENT_DATA *ag)
+void run_test(AGENT_DATA *ag, RESULTS *r, unsigned iTest)
 {
 	float total_steps = 0.0f;
+	float best_fitness = MAX_FITNESS;
+	unsigned best_agent = 999999;
 	
 	float save_s[STATE_SIZE];
 	unsigned save_action;			//**TODO** may not need to be saved
@@ -667,26 +688,37 @@ float run_test(AGENT_DATA *ag)
 		save_s[1] = ag->s[agent + _p.agents];
 		save_action = ag->action[agent];
 		
-		randomize_state(ag->s + agent, ag->seeds + agent, _p.agents);
-		int t;
-		unsigned action;
-		for (t = 0; t < _p.test_reps; t++) {
-			best_action(ag->s + agent, &action, ag->theta + agent, _p.agents, _p.hidden_nodes, junk_activation);			
+		float agent_steps = 0.0f;
+		
+		for (int rep = 0; rep < _p.test_reps; rep++) {
+			randomize_state(ag->s + agent, ag->seeds + agent, _p.agents);
+			int t;
+			unsigned action;
+			for (t = 0; t < _p.test_max; t++) {
+				best_action(ag->s + agent, &action, ag->theta + agent, _p.agents, _p.hidden_nodes, junk_activation);			
 #ifdef TRACE_TEST
-			printf("[test%4d] state = (%9.6f, %9.6f) action will be %s\n", t, ag->s[agent], ag->s[agent + _p.agents], string_for_action(action));
+				printf("[test%4d] state = (%9.6f, %9.6f) action will be %s\n", t, ag->s[agent], ag->s[agent + _p.agents], string_for_action(action));
 #endif
-			take_action(ag->s + agent, action, ag->s + agent, _p.agents, accel);
-			if (terminal_state(ag->s + agent)) {
+				take_action(ag->s + agent, action, ag->s + agent, _p.agents, accel);
+				if (terminal_state(ag->s + agent)) {
 #ifdef TRACE_TEST
-				printf("Done at step %d!!!\n", t);
+					printf("Done at step %d!!!\n", t);
 #endif
-				break;
+					break;
+				}
 			}
-		}
 #ifdef TRACE_TEST
-		if (t == _p.test_reps) printf("failure\n");
+			if (t == _p.test_reps) printf("failure\n");
 #endif
-		total_steps += t;
+			agent_steps += t;
+		}
+
+		ag->fitness[agent] = agent_steps / _p.test_reps;
+		if (ag->fitness[agent] < best_fitness){
+			best_fitness = ag->fitness[agent];
+			best_agent = agent;
+		}
+		total_steps += agent_steps;
 
 		//restore state and action
 		ag->s[agent] = save_s[0];
@@ -694,8 +726,16 @@ float run_test(AGENT_DATA *ag)
 		ag->action[agent] = save_action;
 	}
 	
-	return total_steps / float(_p.agents);
+#ifdef DUMP_TESTED_AGENTS
+	printf("Testing %d\n", iTest);
+	dump_agents("after testing", ag);
+#endif	
+
+	r->avg_fitness[iTest] = total_steps / float(_p.agents) / float(_p.test_reps);
+	r->best_fitness[iTest] = best_fitness;
+	r->best_agent[iTest] = best_agent;
 }
+
 
 void run_CPU(AGENT_DATA *ag, RESULTS *r)
 {
@@ -713,26 +753,34 @@ void run_CPU(AGENT_DATA *ag, RESULTS *r)
 	dump_agents("Initial agents, prior to learning session", ag);
 #endif
 
+
+	run_test(ag, r, 0);
+	
 	for (int i = 0; i < _p.num_chunks; i++) {
 
 		timing_feedback_dot(i);
 		
-		learning_session(ag);
-		
-		if (0 == ((i+1) % _p.chunks_per_test)) {
-			r->avg_steps[i/_p.chunks_per_test] = run_test(ag);
+		if (i > 0 && 0 == (i % _p.chunks_per_restart)){
+			randomize_all_states(ag);
+#ifdef DUMP_AGENTS_AFTER_RESTART
+			dump_agents("after restart", ag);
+#endif
 		}
 		
+		learning_session(ag);
+		
+		if (0 == ((i+1) % _p.chunks_per_test)) run_test(ag, r, (i+1)/_p.chunks_per_test);
+		
 		if ((_p.agent_group_size > 1) && 0 == ((i+1) % _p.chunks_per_share)) {
-			share(ag);
+			share(ag, _p.share_best_pct, _p.agent_group_size, _p.agents, _p.num_wgts);
 		}
 	}
 
 	STOP_TIMER(timer, "run on CPU");
 
-#ifdef DUMP_FINAL_AGENTS
-	dump_agents("Final agents on CPU", ag);
-#endif
+//#ifdef DUMP_FINAL_AGENTS
+//	dump_agents("Final agents on CPU", ag);
+//#endif
 
 }
 

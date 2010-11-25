@@ -14,3 +14,6 @@ That is, can not just take the average parameters and get a good agent.
 		All agents will predict the Q value for the current state and action.
 		After taking an action, the squared error will be calculated for each agent, and that represents the target values for the agent-selection net and is used to train it with back-propagation.
 	The learning of weights for the normal net should be modified to reduce the learning on nets that have high error rates for current state/action.  Something like multiply the alpha value by the ratio of that agent's expected squared error divided by the sum of all agents expected squared error.  Or have a certain number of agents that will be trained on the each time step and chose the agents with the lowest expected error for training.
+	
+3) Use an ensemble approach to combine the results of multiple agents
+	

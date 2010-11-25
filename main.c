@@ -23,7 +23,9 @@ void display_help()
 	printf("  --TRIALS              number of trials for averaging reults\n");
 	printf("  --TIME_STEPS          total number of time steps for each trial\n");
 	printf("  --AGENT_GROUP_SIZE    size of agent groups that will communicate\n");
+	
 	printf("  --SHARING_INTERVAL    number of time steps between agent communication\n");
+	printf("  --SHARE_BEST_PCT		the probability of being replace by the best agent when sharing\n");
 	
 	printf("  --ALPHA               float value for alpha, the learning rate parameter\n");
 	printf("  --EPSILON             float value for epsilon, the exploration parameter\n");
@@ -40,7 +42,8 @@ void display_help()
 	printf("  --NO_PRINT			flag to suppress printing out results (only timing values printed)\n");
 	
 	printf("  --TEST_INTERVAL       time steps between testing of agent's learning ability\n");
-	printf("  --TEST_REPS			duration of test in time steps\n");
+	printf("  --TEST_REPS			number of repititions in each test\n");
+	printf("  --TEST_MAX            maximum duration of each test repititon, in time steps");
 	
 	printf("  --HELP                print this help message\n");
 	printf("default values will be used for any parameters not on command line\n");
@@ -61,6 +64,7 @@ PARAMS read_params(int argc, const char **argv)
 	p.agent_group_size = GET_PARAM("AGENT_GROUP_SIZE", 1);
 	p.agents = p.trials * p.agent_group_size;
 	p.sharing_interval = GET_PARAM("SHARING_INTERVAL", p.time_steps);
+	p.share_best_pct = GET_PARAMF("SHARE_BEST_PCT", DEFAULT_SHARE_BEST_PCT);
 	
 	// set sharing interval to total time steps if only one agent, or if it exceeds the time steps
 	if (p.agents == 1) p.sharing_interval = p.time_steps;
@@ -90,13 +94,17 @@ PARAMS read_params(int argc, const char **argv)
 	p.no_print = PARAM_PRESENT("NO_PRINT");
 	
 	p.test_interval = GET_PARAM("TEST_INTERVAL", p.time_steps);
-	p.test_reps = GET_PARAM("TEST_REPS", p.test_interval);
-	p.num_tests = p.time_steps / p.test_interval;
+	p.test_reps = GET_PARAM("TEST_REPS", DEFAULT_TEST_REPS);
+	p.test_max = GET_PARAM("TEST_MAX", DEFAULT_TEST_MAX);
+	p.num_tests = 1 + p.time_steps / p.test_interval;
 	if (p.test_interval > p.time_steps) p.test_interval = p.time_steps;
+	
+	p.restart_interval = GET_PARAM("RESTART_INTERVAL", p.test_interval);
 	
 	// calculate chunk_interval as smallest of other intervals, or 
 	p.chunk_interval = p.test_interval;
 	if(p.chunk_interval > p.sharing_interval) p.chunk_interval = p.sharing_interval;
+	if(p.chunk_interval > p.restart_interval) p.chunk_interval = p.restart_interval;
 	
 
 	// use value from command line if present (for testing purposes)
@@ -130,17 +138,25 @@ PARAMS read_params(int argc, const char **argv)
 		exit(1);
 	}
 	
+	// restart interval must be a positive integer times the chunk interval
+	if (p.chunk_interval > p.restart_interval || 0 != (p.restart_interval % p.chunk_interval)) {
+		printf("Inconsistent arguments: RESTART_INTERVAL=%d, but time chunks are calculated as %d\n", 
+			   p.restart_interval, p.chunk_interval);
+		exit(1);
+	}
+	
 	p.chunks_per_test = p.test_interval / p.chunk_interval;
 	p.chunks_per_share = p.sharing_interval / p.chunk_interval;
+	p.chunks_per_restart = p.restart_interval / p.chunk_interval;
 		
 	p.state_size = STATE_SIZE;		// x and x'
 	p.num_actions = NUM_ACTIONS;	// left, none, and right
 	p.input_nodes = p.state_size + p.num_actions;
 	
-	printf("[POLE][TRIALS%7d][TIME_STEPS%7d][SHARING_INTERVAL%7d][AGENT_GROUP_SIZE%7d][ALPHA%7.4f]"
-		   "[EPSILON%7.4f][GAMMA%7.4f][LAMBDA%7.4f][TEST_INTERVAL%7d][TEST_REPS%7d][CHUNK_INTERVAL%7d]\n", 
-		   p.trials, p.time_steps, p.sharing_interval, p.agent_group_size, p.alpha, 
-		   p.epsilon, p.gamma, p.lambda, p.test_interval, p.test_reps, p.chunk_interval);
+	printf("[MCAR][TRIALS%7d][TIME_STEPS%7d][SHARING_INTERVAL%7d][SHARE_BEST_PCT%7.4f][AGENT_GROUP_SIZE%7d][ALPHA%7.4f]"
+		   "[EPSILON%7.4f][GAMMA%7.4f][LAMBDA%7.4f][TEST_INTERVAL%7d][TEST_REPS%7d][TEST_MAX%7d][RESTART_INTERVAL%7d][CHUNK_INTERVAL%7d]\n", 
+		   p.trials, p.time_steps, p.sharing_interval, p.share_best_pct, p.agent_group_size, p.alpha, 
+		   p.epsilon, p.gamma, p.lambda, p.test_interval, p.test_reps, p.test_max, p.restart_interval, p.chunk_interval);
 	
 	return p;
 }
@@ -161,6 +177,9 @@ int main(int argc, const char **argv)
 		rCPU = initialize_results();
 		run_CPU(agCPU, rCPU);
 		if (!p.no_print) display_results("CPU:", rCPU);
+#ifdef DUMP_FINAL_AGENTS
+		dump_agents("Final agents on CPU", agCPU);
+#endif
 	}
 	
 	if (p.run_on_GPU) {

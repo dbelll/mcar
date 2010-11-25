@@ -28,6 +28,12 @@
 #define DEFAULT_GAMMA 0.90f
 #define DEFAULT_LAMBDA 0.70f
 
+#define DEFAULT_SHARE_BEST_PCT 0.50f
+
+#define DEFAULT_TEST_REPS 10
+#define DEFAULT_TEST_MAX 1000
+#define MAX_FITNESS 9999
+
 #define DEFAULT_HIDDEN_NODES 1
 
 #define STATE_SIZE 2
@@ -46,6 +52,7 @@ typedef struct{
 	unsigned agent_group_size;	// number of agents in a group that will work toward one solution
 	
 	unsigned sharing_interval;	// number of time steps agents work independently before sharing
+	float share_best_pct;	// the probability of beling replaced by the best agent during sharing
 	
 	unsigned agents;			// total number of agents = agent_group_size * trials
 	unsigned num_sharing_intervals;	// number of sharing intervals = timp_steps / sharing_interval
@@ -63,14 +70,18 @@ typedef struct{
 	unsigned no_print;			// flag to suppress print-out
 	
 	unsigned test_interval;		// number of time steps between testing
-	unsigned test_reps;			// number of reps in each test
+	unsigned test_reps;			// number of repitions of the test
+	unsigned test_max;			// maximum time steps in the test
 	unsigned num_tests;			// calculated = time_steps / test_interval
+
+	unsigned restart_interval;	// interval for restarting the agent at a random state
 	
 	unsigned chunk_interval;	// the number of time steps in the smallest value of
 								// sharing_interval, test_interval, restart_interval
 	unsigned num_chunks;		// calculated = time_steps / chunk_interval
 	unsigned chunks_per_share;	// calculated = sharing_interval / chunk_interval
 	unsigned chunks_per_test;	// calculated = test_interval / chunk_interval
+	unsigned chunks_per_restart;	// calculated = restart_interval / chunk_interval
 	
 	unsigned hidden_nodes;	// number of hidden nodes in the neural net used to calculate Q(s,a)
 	unsigned num_wgts;		// total number of weights = 12*hidden_nodes + 3
@@ -106,10 +117,13 @@ typedef struct{
 	float *activation;	// activation values for hidden nodes - must be stored so they can
 						// be used during back propagation
 	unsigned *action;	// temp storage for action to be taken at the next action
+	float *fitness;		// fitness value from last test
 } AGENT_DATA;		// may hold either host or device pointers
 
 typedef struct{
-	float *avg_steps;
+	float *avg_fitness;		// average fitness of all agents
+	float *best_fitness;	// best fitness value
+	unsigned *best_agent;	// index of agent with best fitness value
 } RESULTS;
 
 
@@ -117,7 +131,7 @@ void set_params(PARAMS p);
 void dump_agents(const char *str, AGENT_DATA *ag);
 
 AGENT_DATA *initialize_agentsCPU();
-void free_agnetsCPU(AGENT_DATA *agCPU);
+void free_agentsCPU(AGENT_DATA *agCPU);
 void run_CPU(AGENT_DATA *cv, RESULTS *r);
 
 void initialize_agentsGPU(AGENT_DATA *agCPU);

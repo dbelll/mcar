@@ -9,10 +9,11 @@
 
 
 //#define VERBOSE
-#define assert(x)
 
 //#define DUMP_INITIAL_AGENTS
 //#define DUMP_AGENT_UPDATES
+//#define DUMP_AGENTS_AFTER_RESTART
+//#define DUMP_TESTED_AGENTS
 #define DUMP_FINAL_AGENTS
 //
 //#define DEBUG_CALC_Q
