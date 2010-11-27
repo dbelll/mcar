@@ -165,7 +165,7 @@ __global__ void argmin_kernel(float *g_data, int in_cols, int g_stride, float *d
 		s_data[s_i] = g_data[g_i];
 		s_index[s_i] = g_i;
 	}else{
-		s_data[s_i] = MAXFLOAT;
+		s_data[s_i] = BIG_FLOAT;
 	}
 
 	// if the value a BLOCK_SIZE away is real data add it to shared
@@ -229,7 +229,7 @@ __global__ void argmin_kernel2(float *g_data, unsigned *g_index, int cols, int g
 		s_data[s_i] = g_data[g_i];
 		s_index[s_i] = g_index[g_i];
 	}else{
-		s_data[s_i] = MAXFLOAT;
+		s_data[s_i] = BIG_FLOAT;
 	}
 
 	// if the value a BLOCK_SIZE away is real data add it to shared
