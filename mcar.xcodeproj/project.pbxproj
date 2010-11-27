@@ -13,8 +13,6 @@
 		10294DA311A1B99300AAF551 /* mcar_profile_log.csv */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = mcar_profile_log.csv; sourceTree = "<group>"; };
 		104A964D1298080900DC5289 /* main.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = main.h; sourceTree = "<group>"; };
 		104A968512993F6600DC5289 /* cuda_rand.cu */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cuda; path = cuda_rand.cu; sourceTree = "<group>"; };
-		104A968612993F6600DC5289 /* cuda_row_reduction.cu */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cuda; path = cuda_row_reduction.cu; sourceTree = "<group>"; };
-		104A968712993F6600DC5289 /* cuda_row_reduction.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = cuda_row_reduction.h; sourceTree = "<group>"; };
 		104A968812993F6600DC5289 /* cuda_utils.cu */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cuda; path = cuda_utils.cu; sourceTree = "<group>"; };
 		104A968912993F6600DC5289 /* cuda_utils.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = cuda_utils.h; sourceTree = "<group>"; };
 		104A96FA129951DD00DC5289 /* misc_utils.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = misc_utils.c; sourceTree = "<group>"; };
@@ -23,6 +21,9 @@
 		104A9B9D129D22A300DC5289 /* check_calcs.numbers */ = {isa = PBXFileReference; lastKnownFileType = file; path = check_calcs.numbers; sourceTree = "<group>"; };
 		106FF7F5119EE68B000CD6C8 /* Makefile */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.make; path = Makefile; sourceTree = "<group>"; };
 		106FF80D119EE7F5000CD6C8 /* main.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = main.c; sourceTree = "<group>"; };
+		10D25445129FF459004F4791 /* junk */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = junk; sourceTree = "<group>"; };
+		10D2568E12A14ECE004F4791 /* reduction.cu */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cuda; path = reduction.cu; sourceTree = "<group>"; };
+		10D2568F12A14ECE004F4791 /* reduction.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = reduction.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -50,13 +51,13 @@
 		104A96F9129951C400DC5289 /* utils */ = {
 			isa = PBXGroup;
 			children = (
-				104A96FA129951DD00DC5289 /* misc_utils.c */,
+				10D2568F12A14ECE004F4791 /* reduction.h */,
+				10D2568E12A14ECE004F4791 /* reduction.cu */,
 				104A96FB129951DD00DC5289 /* misc_utils.h */,
+				104A96FA129951DD00DC5289 /* misc_utils.c */,
 				104A968512993F6600DC5289 /* cuda_rand.cu */,
-				104A968612993F6600DC5289 /* cuda_row_reduction.cu */,
-				104A968712993F6600DC5289 /* cuda_row_reduction.h */,
-				104A968812993F6600DC5289 /* cuda_utils.cu */,
 				104A968912993F6600DC5289 /* cuda_utils.h */,
+				104A968812993F6600DC5289 /* cuda_utils.cu */,
 			);
 			name = utils;
 			sourceTree = "<group>";
@@ -66,6 +67,7 @@
 			children = (
 				104A9B9D129D22A300DC5289 /* check_calcs.numbers */,
 				104A97341299772C00DC5289 /* notes.txt */,
+				10D25445129FF459004F4791 /* junk */,
 				104A96F9129951C400DC5289 /* utils */,
 				10294D9B11A1B93300AAF551 /* source */,
 				10294D9C11A1B93D00AAF551 /* other */,

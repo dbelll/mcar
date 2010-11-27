@@ -16,7 +16,7 @@
 #include "cuda_utils.h"
 #include "cuda_rand.cu"
 #include "misc_utils.h"
-
+#include "reduction.h"
 
 // parameters stored in global structure for CPU
 static PARAMS _p;
@@ -24,18 +24,40 @@ static PARAMS _p;
 // Initial global seeds used to ensure identical random variables each run on all machines
 static unsigned g_seeds[SEEDS_PER_AGENT] =  {2784565659u, 1491908209u, 3415062841u, 3293636241u};
 
-
-// parameters stored in constant memory for GPU
-
-
-
 static float accel[NUM_ACTIONS] = {-ACCEL_FACTOR, 0.0f, ACCEL_FACTOR};
+
 
 #pragma mark GPU constant memory
 __constant__ float dc_accel[NUM_ACTIONS];
 
+__constant__ PARAMS dc_p;
+__constant__ AGENT_DATA dc_ag;
 
-#pragma mark CPU & GPU
+// paramaters are stored in constant memory on the device
+//__constant__ unsigned dc_agents;
+//__constant__ unsigned dc_agent_group_size;
+//__constant__ unsigned dc_time_steps;
+//
+//__constant__ float dc_epsilon;
+//__constant__ float dc_gamma;
+//__constant__ float dc_lambda;
+//__constant__ float dc_alpha;
+//
+//__constant__ unsigned dc_num_actions;
+//__constant__ unsigned dc_num_hidden;
+//
+//__constant__ unsigned dc_test_interval;
+//__constant__ unsigned dc_test_reps;
+//__constant__ unsigned dc_test_max;
+
+// fixed pointers are stored in constant memory on the device
+//__constant__ unsigned *dc_seeds;
+//__constant__ float *dc_theta;
+//__constant__ float *dc_W;
+//__constant__ float *dc_s;
+//__constant__ unsigned *dc_action;
+//__constant__ float *fitness;
+
 
 const char * string_for_action(unsigned a)
 {
@@ -43,9 +65,14 @@ const char * string_for_action(unsigned a)
 }
 
 
+
+#pragma mark -
+#pragma mark CPU & GPU
+
+
 DUAL_PREFIX float sigmoid(float in)
 {
-	return 1.0/(1.0 + expf(-in));
+	return 1.0f/(1.0f + expf(-in));
 }
 
 DUAL_PREFIX unsigned iActionStart(unsigned a, unsigned stride, unsigned num_hidden)
@@ -348,6 +375,21 @@ DUAL_PREFIX void randomize_state(float *s, unsigned *seeds, unsigned stride)
 	s[stride] = rand_in_range(seeds, stride, MIN_VEL, MAX_VEL);
 }
 
+void randomize_all_states(AGENT_DATA *ag)
+{
+	// randomize state for all agents, deterine first action and set activation values for hidden 
+	for (int agent = 0; agent < _p.agents; agent++) {
+		randomize_state(ag->s + agent, ag->seeds + agent, _p.agents);
+		reset_gradient(ag->W + agent, _p.agents, _p.num_wgts);
+//		printf("randomize_state, state is now (%9.6f, %9.6f)\n", ag->s[agent], ag->s[agent + _p.agents]);
+		choose_action(ag->s + agent, ag->action + agent, ag->theta + agent, _p.epsilon, _p.agents, _p.hidden_nodes, ag->activation + agent, ag->seeds + agent);
+		// force activation values to be recalculated for the chosen action
+//		printf("chosen action will be %s\n", string_for_action(ag->action[agent]));
+		calc_Q(ag->s + agent, ag->action[agent], ag->theta + agent, _p.agents, _p.hidden_nodes, ag->activation + agent);
+		// update_trace(...
+	}
+}
+
 
 #pragma mark -
 #pragma mark CPU
@@ -385,6 +427,20 @@ void dump_agent(AGENT_DATA *ag, unsigned agent)
 	printf("\n");
 }
 
+void dump_agent_pointers(const char *str, AGENT_DATA *ag)
+{
+	printf("\n===================================================\n%s\n", str);
+	printf("---------------------------------------------------\n", str);
+	printf("     seeds: %p\n", ag->seeds);
+	printf("     theta: %p\n", ag->theta);
+	printf("         W: %p\n", ag->W);
+	printf("     state: %p\n", ag->s);
+	printf("activation: %p\n", ag->activation);
+	printf("    action: %p\n", ag->action);
+	printf("   fitness: %p\n", ag->fitness);
+	printf("====================================================\n\n", str);
+}
+
 // print message and dump all agent data
 void dump_agents(const char *str, AGENT_DATA *ag)
 {
@@ -415,9 +471,9 @@ RESULTS *initialize_results()
 void free_results(RESULTS *r)
 {
 	if (r){
-		if (r->avg_fitness) free(r->avg_fitness);
-		if (r->best_fitness) free(r->best_fitness);
-		if (r->best_agent) free(r->best_agent);
+		if (r->avg_fitness){ free(r->avg_fitness); r->avg_fitness = NULL;}
+		if (r->best_fitness){ free(r->best_fitness); r->best_fitness = NULL;}
+		if (r->best_agent){ free(r->best_agent); r->best_agent = NULL;}
 		free(r);
 	}
 }
@@ -506,6 +562,8 @@ float *create_activation(unsigned num_agents, unsigned num_hidden)
 	for (int i = 0; i < num_agents * num_hidden; i++) activation[i] = 0.0f;
 	return activation;
 }
+
+// initialize agents on CPU, including the initial randomization of state and choice of first action
 AGENT_DATA *initialize_agentsCPU()
 {
 #ifdef VERBOSE
@@ -520,6 +578,9 @@ AGENT_DATA *initialize_agentsCPU()
 	ag->action = create_actions(_p.agents, _p.num_actions);
 	ag->activation = create_activation(_p.agents, _p.hidden_nodes);
 	ag->fitness = create_fitness(_p.agents);
+	
+	randomize_all_states(ag);
+	
 	return ag;
 }
 
@@ -529,13 +590,13 @@ void free_agentsCPU(AGENT_DATA *ag)
 	printf("freeing agents on CPU...\n");
 #endif
 	if (ag) {
-		if (ag->seeds) free(ag->seeds);
-		if (ag->theta) free(ag->theta);
-		if (ag->W) free(ag->W);
-		if (ag->s) free(ag->s);
-		if (ag->action) free(ag->action);
-		if (ag->activation) free(ag->activation);
-		if (ag->fitness) free(ag->fitness);
+		if (ag->seeds){ free(ag->seeds); ag->seeds = NULL;}
+		if (ag->theta){ free(ag->theta); ag->theta = NULL;}
+		if (ag->W){ free(ag->W); ag->W = NULL;}
+		if (ag->s){ free(ag->s); ag->s = NULL;}
+		if (ag->action){ free(ag->action); ag->action = NULL;}
+		if (ag->activation){ free(ag->activation); ag->activation = NULL;}
+		if (ag->fitness){ free(ag->fitness); ag->fitness = NULL;}
 		free(ag);
 	}
 }
@@ -652,21 +713,7 @@ void share(AGENT_DATA *ag, float share_best_pct, unsigned agent_group_size, unsi
 	}
 }
 
-void randomize_all_states(AGENT_DATA *ag)
-{
-	// randomize state for all agents, deterine first action and 
-	for (int agent = 0; agent < _p.agents; agent++) {
-		randomize_state(ag->s + agent, ag->seeds + agent, _p.agents);
-		reset_gradient(ag->W + agent, _p.agents, _p.num_wgts);
-//		printf("randomize_state, state is now (%9.6f, %9.6f)\n", ag->s[agent], ag->s[agent + _p.agents]);
-		choose_action(ag->s + agent, ag->action + agent, ag->theta + agent, _p.epsilon, _p.agents, _p.hidden_nodes, ag->activation + agent, ag->seeds + agent);
-		// force activation values to be recalculated for the chosen action
-//		printf("chosen action will be %s\n", string_for_action(ag->action[agent]));
-		calc_Q(ag->s + agent, ag->action[agent], ag->theta + agent, _p.agents, _p.hidden_nodes, ag->activation + agent);
-		// update_trace(...
-	}
-}
-
+// test the agents and store the results in the iTest entry in the RESULTS arrays
 void run_test(AGENT_DATA *ag, RESULTS *r, unsigned iTest)
 {
 	float total_steps = 0.0f;
@@ -742,40 +789,46 @@ void run_CPU(AGENT_DATA *ag, RESULTS *r)
 #ifdef VERBOSE
 	printf("\n==============================================\nrunning on CPU...\n");
 #endif
+
+	dump_agents("run_CPU entry", ag);
+	
 	unsigned timer;
 	CREATE_TIMER(&timer);
 	START_TIMER(timer);
 
 	timing_feedback_header(_p.num_chunks);
-	randomize_all_states(ag);
-	
-#ifdef DUMP_INITIAL_AGENTS
-	dump_agents("Initial agents, prior to learning session", ag);
-#endif
 
-
-	run_test(ag, r, 0);
-	
 	for (int i = 0; i < _p.num_chunks; i++) {
 
 		timing_feedback_dot(i);
 		
-		if (i > 0 && 0 == (i % _p.chunks_per_restart)){
+		if ((i > 0) && 0 == (i % _p.chunks_per_restart)){
+			printf("randomize all states...\n");
 			randomize_all_states(ag);
 #ifdef DUMP_AGENTS_AFTER_RESTART
 			dump_agents("after restart", ag);
 #endif
 		}
 		
+		if (i == 0) {
+#ifdef DUMP_INITIAL_AGENTS
+			dump_agents("Initial agents on CPU, prior to learning session", ag);
+#endif
+//			run_test(ag, r, i);
+		}
+		
 		learning_session(ag);
+		dump_agents("after learning session", ag);
 		
 		if (0 == ((i+1) % _p.chunks_per_test)) run_test(ag, r, (i+1)/_p.chunks_per_test);
 		
-		if ((_p.agent_group_size > 1) && 0 == ((i+1) % _p.chunks_per_share)) {
-			share(ag, _p.share_best_pct, _p.agent_group_size, _p.agents, _p.num_wgts);
-		}
-	}
+		dump_agents("after testing", ag);
 
+//		if ((_p.agent_group_size > 1) && 0 == ((i+1) % _p.chunks_per_share)) {
+//			share(ag, _p.share_best_pct, _p.agent_group_size, _p.agents, _p.num_wgts);
+//		}
+	}
+	printf("\n");
 	STOP_TIMER(timer, "run on CPU");
 
 //#ifdef DUMP_FINAL_AGENTS
@@ -787,14 +840,254 @@ void run_CPU(AGENT_DATA *ag, RESULTS *r)
 #pragma mark -
 #pragma mark GPU
 
-void initialize_agentsGPU(AGENT_DATA *agCPU)
+// copy agents from device back to host
+AGENT_DATA *copy_GPU_agents(AGENT_DATA *agGPU)
 {
+//	printf("copy_GPU_agents\n");
+	AGENT_DATA *agCopy = (AGENT_DATA *)malloc(sizeof(AGENT_DATA));
+//	dump_agent_pointers("agGPU", agGPU);
+//	printf("  %d seeds from %p\n", _p.agents * 4, agGPU->seeds);
+	agCopy->seeds = host_copyui(agGPU->seeds, _p.agents * 4);
+	agCopy->theta = host_copyf(agGPU->theta, _p.agents * _p.num_wgts);
+	agCopy->W = host_copyf(agGPU->W, _p.agents * _p.num_wgts);
+	agCopy->s = host_copyf(agGPU->s, _p.agents * _p.state_size);
+	agCopy->activation = host_copyf(agGPU->activation, _p.agents * _p.hidden_nodes);
+	agCopy->action = host_copyui(agGPU->action, _p.agents);
+	agCopy->fitness = host_copyf(agGPU->fitness, _p.agents);
+	return agCopy;
 }
 
+// dump the agents from the GPU by first copying to CPU and then dumping the CPU copy
+void dump_agentsGPU(const char *str, AGENT_DATA *agGPU)
+{
+	AGENT_DATA *agCopy = copy_GPU_agents(agGPU);
+	dump_agents(str, agCopy);
+	free(agCopy);
+}
+
+// Copy the provided CPU agent data to the GPU, storing device pointers in a new AGENT_DATA structure
+// Also copy the AGENT_DATA and PARAMS structures to constant memory on the device
+AGENT_DATA *initialize_agentsGPU(AGENT_DATA *agCPU)
+{
+#ifdef VERBOSE
+	printf("\n==============================================\nrunning on GPU...\n");
+#endif
+#ifdef VERBOSE
+	printf("initializing agents on GPU...\n");
+#endif
+	AGENT_DATA *ag = (AGENT_DATA *)malloc(sizeof(AGENT_DATA));
+	ag->seeds = device_copyui(agCPU->seeds, _p.agents * 4);
+	ag->theta = device_copyf(agCPU->theta, _p.agents * _p.num_wgts);
+	ag->W = device_copyf(agCPU->W, _p.agents * _p.num_wgts);
+	ag->s = device_copyf(agCPU->s, _p.agents * _p.state_size);
+	ag->activation = device_copyf(agCPU->activation, _p.agents * _p.hidden_nodes);
+	ag->action = device_copyui(agCPU->action, _p.agents);
+	ag->fitness = device_copyf(agCPU->fitness, _p.agents);
+	
+	cudaMemcpyToSymbol("dc_p", &_p, sizeof(PARAMS));
+	cudaMemcpyToSymbol("dc_ag", ag, sizeof(AGENT_DATA));
+	cudaMemcpyToSymbol("dc_accel", accel, 3 * sizeof(float));
+	
+//	dump_agent_pointers("agent copied to GPU", ag);
+	
+	return ag;
+}
+
+// Free the deivce memory pointed to by elements of AGENT_DATA ag, then free ag
 void free_agentsGPU(AGENT_DATA *ag)
 {
 #ifdef VERBOSE
 	printf("freeing agents on GPU...\n");
 #endif
+	if (ag) {
+		if (ag->seeds){ cudaFree(ag->seeds); ag->seeds = NULL;}
+		if (ag->theta){ cudaFree(ag->theta); ag->theta = NULL;}
+		if (ag->W){ cudaFree(ag->W); ag->W = NULL;}
+		if (ag->s){ cudaFree(ag->s); ag->s = NULL;}
+		if (ag->activation){ cudaFree(ag->activation); ag->activation = NULL;}
+		if (ag->action){ cudaFree(ag->action); ag->action = NULL;}
+		if (ag->fitness){ cudaFree(ag->fitness); ag->fitness = NULL;}
+		free(ag);
+	}
+}
 
+__global__ void kernel_randomize_all_states()
+{
+}
+
+__global__ void test_kernel(float *results)
+{
+	unsigned iGlobal = threadIdx.x + (blockIdx.x + blockIdx.y * gridDim.x) * blockDim.x;
+	unsigned idx = threadIdx.x;
+	if (iGlobal >= dc_p.agents) return;
+	
+//	ag_copy->seeds = dc_ag.seeds;
+//	ag_copy->theta = dc_ag.theta;
+//	ag_copy->W = dc_ag.W;
+//	ag_copy->s = dc_ag.s;
+//	ag_copy->activation = dc_ag.activation;
+//	ag_copy->action = dc_ag.action;
+//	ag_copy->fitness = dc_ag.fitness;
+
+	__shared__ float s_s[2 * BLOCK_SIZE];		// assumes state size is 2
+	__shared__ unsigned s_action[BLOCK_SIZE];
+	 
+	// copy state from global to shared memory to preserve it
+	s_s[idx] = dc_ag.s[iGlobal];
+	s_s[idx + BLOCK_SIZE] = dc_ag.s[iGlobal + dc_p.stride];
+	s_action[idx] = dc_ag.action[iGlobal];
+	 
+	float steps = 0.0f;
+	for (int rep = 0; rep < dc_p.test_reps; rep++) {
+		randomize_state(dc_ag.s + iGlobal, dc_ag.seeds + iGlobal, dc_p.stride);
+		int t;
+		unsigned action;
+		for (t = 0; t < dc_p.test_max; t++) {
+			best_action(dc_ag.s + iGlobal, &action, dc_ag.theta + iGlobal, dc_p.stride, dc_p.hidden_nodes, dc_ag.activation + iGlobal);
+			take_action(dc_ag.s + iGlobal, action, dc_ag.s + iGlobal, dc_p.stride, dc_accel);
+			if (terminal_state(dc_ag.s + iGlobal)) break;
+		}
+		steps += (float)t;
+	}
+	dc_ag.fitness[iGlobal] = steps / dc_p.test_reps;
+	
+	// restore the state from shared memory
+	dc_ag.s[iGlobal] = s_s[idx];
+	dc_ag.s[iGlobal + dc_p.stride] = s_s[idx + BLOCK_SIZE];
+	dc_ag.action[iGlobal] = s_action[idx];
+	
+	// save the result in the result array
+	results[iGlobal] = dc_ag.fitness[iGlobal];
+}
+
+__global__ void learn_kernel(unsigned steps, unsigned isRestart)
+{
+	unsigned iGlobal = threadIdx.x + (blockIdx.x + blockIdx.y * gridDim.x) * blockDim.x;
+	unsigned idx = threadIdx.x;
+	if (iGlobal >= dc_p.agents) return;
+	
+	if (isRestart) {
+		randomize_state(dc_ag.s + iGlobal, dc_ag.seeds + iGlobal, dc_p.agents);
+		// gradients have already been reset
+		choose_action(dc_ag.s + iGlobal, dc_ag.action +iGlobal, dc_ag.theta + iGlobal, dc_p.epsilon, dc_p.agents, dc_p.hidden_nodes, dc_ag.activation + iGlobal, dc_ag.seeds + iGlobal);
+		calc_Q(dc_ag.s + iGlobal, dc_ag.action[iGlobal], dc_ag.theta + iGlobal, dc_p.agents, dc_p.hidden_nodes, dc_ag.activation + iGlobal);
+	}
+	
+	for (int t = 0; t < steps; t++) {
+		float Q_curr = calc_Q(dc_ag.s + iGlobal, dc_ag.action[iGlobal], dc_ag.theta + iGlobal, dc_p.agents, dc_p.hidden_nodes, dc_ag.activation + iGlobal);
+		accumulate_gradient(dc_ag.s + iGlobal, dc_ag.action[iGlobal], dc_ag.theta + iGlobal, dc_p.agents, dc_p.hidden_nodes, dc_p.num_wgts, dc_ag.activation + iGlobal, dc_ag.W + iGlobal, dc_p.lambda, dc_p.gamma);
+		float reward = take_action(dc_ag.s + iGlobal, dc_ag.action[iGlobal], dc_ag.s + iGlobal, dc_p.agents, dc_accel);
+		unsigned success = terminal_state(dc_ag.s + iGlobal);
+		
+		if (success) {
+			randomize_state(dc_ag.s + iGlobal, dc_ag.seeds + iGlobal, dc_p.agents);
+		}
+		float Q_next = choose_action(dc_ag.s + iGlobal, dc_ag.action + iGlobal, dc_ag.theta + iGlobal, dc_p.epsilon, dc_p.agents, dc_p.hidden_nodes, dc_ag.activation + iGlobal, dc_ag.seeds + iGlobal);
+		float error = reward + dc_p.gamma * Q_next - Q_curr;
+		update_thetas(dc_ag.s + iGlobal, dc_ag.theta + iGlobal, dc_ag.W + iGlobal, dc_p.alpha, error, dc_p.agents, dc_p.hidden_nodes, dc_ag.activation + iGlobal);
+		if (success) reset_gradient(dc_ag.W + iGlobal, dc_p.agents, dc_p.num_wgts);
+	}
+}
+
+// run on the GPU, storing results in the RESULTS array provided
+void run_GPU(AGENT_DATA *agGPU, RESULTS *rGPU)
+{
+	// on entry, device pointers are stored in dc_ag for agent data, and
+	// parameters are stored in dc_p
+
+	dump_agentsGPU("run_GPU entry", agGPU);
+	
+	// allocate memory on device to hold results
+	float *d_results = device_allocf(_p.agents * _p.num_tests);
+
+	// calculate block and grid sizes for kernels	
+	// basic arrangement has one thread for each agent in each trial
+	dim3 blockDim(BLOCK_SIZE);
+	dim3 gridDim(1 + (_p.agents-1) / BLOCK_SIZE);
+	if (gridDim.x > 65535) {
+		gridDim.y = 1 + (gridDim.x-1) / 65535;
+		gridDim.x = 1 + (gridDim.x-1) / gridDim.y;
+	}
+
+	dim3 resetGradientBlockDim(512);
+	dim3 resetGradientGridDim(1 + (_p.agents * _p.num_wgts * _p.num_actions - 1) / 512);
+	if (resetGradientGridDim.x > 65535) {
+		resetGradientGridDim.y = 1 + (resetGradientGridDim.x - 1) / 65535;
+		resetGradientGridDim.x = 1 + (resetGradientGridDim.x - 1) / resetGradientGridDim.y;
+	}
+	
+	// set up timing values
+	CUDA_EVENT_PREPARE
+	float timeReset = 0.0f;
+	float timeLearn = 0.0f;
+	float timeTest = 0.0f;
+	float timeReduce = 0.0f;
+	unsigned timerGPU;
+	CREATE_TIMER(&timerGPU);
+	START_TIMER(timerGPU);
+
+	
+	timing_feedback_header(_p.num_chunks);
+	for (int i = 0; i < _p.num_chunks; i++) {
+		timing_feedback_dot(i);
+		
+		unsigned isRestart = ((i > 0) && 0 == (i % _p.chunks_per_restart));
+		if (isRestart) {
+			// reset gradients (state will be randomized in the learning kernel)
+			CUDA_EVENT_START;
+//			reset_gradient_kernel<<<resetGradientGridDim, resetGradientBlockDim>>>();
+			CUDA_EVENT_STOP(timeReset);
+			CUT_CHECK_ERROR("reset_gradient_kernel execution failed");
+		}
+		
+		// do some learning
+		CUDA_EVENT_START;
+		learn_kernel<<<gridDim, blockDim>>>(_p.chunk_interval, isRestart);
+		CUDA_EVENT_STOP(timeLearn);
+		CUT_CHECK_ERROR("learn_kernel execution failed");
+		
+		dump_agentsGPU("after learning session", agGPU);
+		
+		// run tests (pre-sharing)
+		if (0 == ((i+1) % _p.chunks_per_test)) {
+			CUDA_EVENT_START;
+			printf("test_kernel... (grid is (%d x %d) block is (%d x %d)\n", gridDim.x, gridDim.y, blockDim.x, blockDim.y);
+			test_kernel<<<gridDim, blockDim>>>(d_results + ((i+1) / _p.chunks_per_test) * _p.agents);
+			CUDA_EVENT_STOP(timeTest);
+			CUT_CHECK_ERROR("test_kernel execution failed");
+		}
+		
+		dump_agentsGPU("after testing", agGPU);
+		
+		// sharing will go here
+	}
+	printf("\n");
+	
+	// reduce the result array on the device and copy back to host
+	CUDA_EVENT_START;
+	float *d_minval;
+	unsigned *d_mincol;
+	unsigned min_stride = row_argmin(d_results, _p.agents, _p.num_tests, &d_minval, &d_mincol);
+//	device_dumpf("d_minval", d_minval, _p.num_tests, 1 + (_p.agents - 1)/(2*BLOCK_SIZE));
+//	device_dumpui("d_minval", d_mincol, _p.num_tests, 1 + (_p.agents - 1)/(2*BLOCK_SIZE));
+	row_reduce(d_results, _p.agents, _p.num_tests);
+	for (int i = 0; i < _p.num_tests; i++) {
+		CUDA_SAFE_CALL(cudaMemcpy(rGPU->avg_fitness + i, d_results + i * _p.agents, sizeof(float), cudaMemcpyDeviceToHost));
+		CUDA_SAFE_CALL(cudaMemcpy(rGPU->best_fitness + i, d_minval + i * min_stride, sizeof(float), cudaMemcpyDeviceToHost));
+		CUDA_SAFE_CALL(cudaMemcpy(rGPU->best_agent + i, d_mincol + i * min_stride, sizeof(unsigned), cudaMemcpyDeviceToHost));
+		rGPU->avg_fitness[i] /= _p.agents;
+	}
+	CUDA_EVENT_STOP(timeReduce);
+	CUDA_EVENT_CLEANUP;
+	STOP_TIMER(timerGPU, "total GPU time");
+	PRINT_TIME(timeReset, "reset_gradient_kernel time");
+	PRINT_TIME(timeLearn, "learn_kernel time");
+	PRINT_TIME(timeTest, "test_kernel time");
+	PRINT_TIME(timeReduce, "reduce_kernel time");
+
+#ifdef DUMP_TERMINAL_AGENT_STATE
+	dump_agents_GPU("--------------------------------------\n       Ending Agent States\n", agGPU);
+#endif
+
+	if (d_results) cudaFree(d_results);
 }

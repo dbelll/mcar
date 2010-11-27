@@ -25,6 +25,12 @@
  *			host_copyf(<d_data>, <count>)		// allocate host memory and copy from device
  *			host_copyui(<d_data>, <count>)
  *
+ *		Dumping data arrays from host or device
+ *			host_dumpf("message", <h_data>, <rows>, <cols>);
+ *			host_dumpui("message", <h_data>, <rows>, <cols>);
+ *			device_dumpf("message", <d_data>, <rows>, <cols>);		** NOT YET IMPLEMENTED **
+ *			device_dumpui("message", <d_data>, <rows>, <cols>);		** NOT YET IMPLEMENTED **
+ *
  *		Timers...
  *			CREAT_TIMER(&timer)
  *			START_TIMER(timer)
@@ -61,6 +67,14 @@ unsigned *device_allocui(unsigned count);
 // returned pointer must be ultimately freed on the host
 float *host_copyf(float *d_data, unsigned count);
 unsigned *host_copyui(unsigned *d_data, unsigned count);
+
+
+void host_dumpf(const char *str, float *data, unsigned nRows, unsigned nCols);
+void device_dumpf(const char *str, float *data, unsigned nRows, unsigned nCols);
+void host_dumpui(const char *str, unsigned *data, unsigned nRows, unsigned nCols);
+void device_dumpui(const char *str, unsigned *data, unsigned nRows, unsigned nCols);
+
+
 
 // Macros for calculating timing values.
 // Caller must supply a pointer to unsigned int when creating a timer,

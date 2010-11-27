@@ -151,12 +151,15 @@ PARAMS read_params(int argc, const char **argv)
 		
 	p.state_size = STATE_SIZE;		// x and x'
 	p.num_actions = NUM_ACTIONS;	// left, none, and right
-	p.input_nodes = p.state_size + p.num_actions;
 	
 	printf("[MCAR][TRIALS%7d][TIME_STEPS%7d][SHARING_INTERVAL%7d][SHARE_BEST_PCT%7.4f][AGENT_GROUP_SIZE%7d][ALPHA%7.4f]"
 		   "[EPSILON%7.4f][GAMMA%7.4f][LAMBDA%7.4f][TEST_INTERVAL%7d][TEST_REPS%7d][TEST_MAX%7d][RESTART_INTERVAL%7d][CHUNK_INTERVAL%7d]\n", 
 		   p.trials, p.time_steps, p.sharing_interval, p.share_best_pct, p.agent_group_size, p.alpha, 
 		   p.epsilon, p.gamma, p.lambda, p.test_interval, p.test_reps, p.test_max, p.restart_interval, p.chunk_interval);
+
+	p.stride = p.agents;
+	p.num_hidden = p.hidden_nodes;
+	p.num_states = p.state_size;
 	
 	return p;
 }
@@ -168,13 +171,15 @@ int main(int argc, const char **argv)
 
 	// Initialize agents on CPU and GPU
 	AGENT_DATA *agCPU = initialize_agentsCPU();
-	if (p.run_on_GPU) initialize_agentsGPU(agCPU);
-	
-	RESULTS *rCPU = NULL;
-	RESULTS *rGPU = NULL;
+//	dump_agents("initial agents on CPU", agCPU);
+	AGENT_DATA *agGPU = NULL;
+	if(p.run_on_GPU){
+		agGPU= initialize_agentsGPU(agCPU);
+//		dump_agentsGPU("initial agents on GPU", agGPU);
+	}
 	
 	if (p.run_on_CPU) {
-		rCPU = initialize_results();
+		RESULTS *rCPU = initialize_results();
 		run_CPU(agCPU, rCPU);
 		if (!p.no_print) display_results("CPU:", rCPU);
 #ifdef DUMP_FINAL_AGENTS
@@ -183,9 +188,13 @@ int main(int argc, const char **argv)
 	}
 	
 	if (p.run_on_GPU) {
-		rGPU = initialize_results();
-//		run_GPU(rGPU);
+		RESULTS *rGPU = initialize_results();
+		run_GPU(agGPU, rGPU);
 		if (!p.no_print) display_results("GPU:", rGPU);
+#ifdef DUMP_FINAL_AGENTS
+		dump_agentsGPU("Final agents on GPU", agGPU);
+#endif
+		free_agentsGPU(agGPU);
 	}
 	
 	

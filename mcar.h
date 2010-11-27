@@ -12,6 +12,8 @@
 #pragma mark -
 #pragma mark Problem Constants
 
+#define BLOCK_SIZE 128
+
 #define MIN_X -1.2f
 #define MAX_X 0.5f
 #define MIN_VEL -0.07f
@@ -84,10 +86,13 @@ typedef struct{
 	unsigned chunks_per_restart;	// calculated = restart_interval / chunk_interval
 	
 	unsigned hidden_nodes;	// number of hidden nodes in the neural net used to calculate Q(s,a)
-	unsigned num_wgts;		// total number of weights = 12*hidden_nodes + 3
+	unsigned num_wgts;		// total number of weights for each action = 12*hidden_nodes + 3
 	unsigned num_actions;	// 3
 	unsigned state_size;	// 2 (x and x')
-	unsigned input_nodes;	// state_size + num_actions
+
+	unsigned num_states;	// alternate names
+	unsigned stride;
+	unsigned num_hidden;
 } PARAMS;
 
 
@@ -95,8 +100,8 @@ typedef struct{
  *	The AGENT_DATA structure holds pointers to data related to all the agents.
  */
 typedef struct{
-	unsigned *seeds;	// seeds for random number generator
-	float *theta;		// weights for the neural net organized as follows:
+	unsigned *seeds;	// seeds for random number generator (num_agents * 4)
+	float *theta;		// weights for the neural, net organized as follows:
 						// LEFT Nerual Net
 						// bias -> hidden[0]
 						// x -> LEFT_NN hidden[0]
@@ -110,12 +115,14 @@ typedef struct{
 						// ... grand total of 4 * num_hidden + 1 ...
 						//
 						// Repeat for NONE Neural Net and RIGHT Neural Net
-						// Grand total of 3 * (4 * num_hidden + 1) = 12*num_hidden + 3 weights
+						// Grand total of num_actions * (4 * num_hidden + 1) 
+						// for mcar, this equals 12*num_hidden + 3 weights
 						//
 	float *W;			// sum of lambda * gamma * gradient of Q for each weight in neural net
+						// same size as theta
 	float *s;			// current state x and x'
-	float *activation;	// activation values for hidden nodes - must be stored so they can
-						// be used during back propagation
+	float *activation;	// activation values for hidden nodes (num_hidden) 
+						// must be stored so they can be used during back propagation
 	unsigned *action;	// temp storage for action to be taken at the next action
 	float *fitness;		// fitness value from last test
 } AGENT_DATA;		// may hold either host or device pointers
@@ -129,14 +136,16 @@ typedef struct{
 
 void set_params(PARAMS p);
 void dump_agents(const char *str, AGENT_DATA *ag);
+void dump_agent_pointers(const char *str, AGENT_DATA *ag);
 
 AGENT_DATA *initialize_agentsCPU();
 void free_agentsCPU(AGENT_DATA *agCPU);
 void run_CPU(AGENT_DATA *cv, RESULTS *r);
 
-void initialize_agentsGPU(AGENT_DATA *agCPU);
-void free_agentsGPU();
-void run_GPU(RESULTS *r);
+AGENT_DATA *initialize_agentsGPU(AGENT_DATA *agCPU);
+void dump_agentsGPU(const char *str, AGENT_DATA *agGPU);
+void free_agentsGPU(AGENT_DATA *agGPU);
+void run_GPU(AGENT_DATA *ag, RESULTS *r);
 
 
 RESULTS *initialize_results();

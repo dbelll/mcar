@@ -24,7 +24,7 @@
 //
 //#define TRACE_TEST
 
-#define CPU_ONLY
+//#define CPU_ONLY
 
 #ifdef CPU_ONLY
 #define DUAL_PREFIX __host__
