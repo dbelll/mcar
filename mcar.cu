@@ -106,6 +106,9 @@ DUAL_PREFIX float calc_Q(float *s, unsigned a, float *theta, unsigned stride, un
 	// adjust theta to point to beginning of this action's weights
 	theta += iActionStart(a, stride, num_hidden);
 	
+	unsigned iOutputBias = offsetToOutputBias(stride, num_hidden);
+	float result = 0.0f;
+
 	// loop over each hidden node
 	for (int j = 0; j < num_hidden; j++) {
 		// iBias is the index into theta for the bias weight for the hidden node j
@@ -119,7 +122,8 @@ DUAL_PREFIX float calc_Q(float *s, unsigned a, float *theta, unsigned stride, un
 			in += theta[iBias + (1+k) * stride] * s[k * stride];
 		}
 		
-		activation[j * stride] = sigmoid(in);
+//		activation[j * stride] = sigmoid(in);
+		result += theta[iOutputBias + (1+j) * stride] * sigmoid(in);
 
 #ifdef DEBUG_CALC_Q
 		printf("calc_Q for state (%9.4f, %9.4f) and action %d ... ", s[0], s[stride], a);
@@ -127,14 +131,7 @@ DUAL_PREFIX float calc_Q(float *s, unsigned a, float *theta, unsigned stride, un
 #endif
 	}
 	
-	// Calculate the output Q-value
-	// first add in the output bias contribution
-	unsigned iOutputBias = offsetToOutputBias(stride, num_hidden);
-	float result = theta[iOutputBias] * -1.0f;
-	
-	for (int j = 0; j < num_hidden; j++) {
-		result += theta[iOutputBias + (1+j) * stride] * activation[j * stride];
-	}
+	result += theta[iOutputBias] * -1.0f;
 	
 #ifdef DEBUG_CALC_Q
 		printf("output activation is %9.4f\n", result);
@@ -169,7 +166,7 @@ DUAL_PREFIX float calc_Q2(float *s, unsigned a, float *theta, unsigned stride_s,
 		result += theta[iOutputBias + (1+j) * stride_theta] * sigmoid(in);
 
 #ifdef DEBUG_CALC_Q
-		printf("calc_Q for state (%9.4f, %9.4f) and action %d ... ", s[0], s[stride], a);
+		printf("calc_Q for state (%9.4f, %9.4f) and action %d ... ", s[0], s[stride_s], a);
 //		printf("input to hidden node %d is %9.4f and activation is %9.4f\n", j, in, activation[j*stride]);
 #endif
 	}
@@ -778,6 +775,8 @@ void run_test(AGENT_DATA *ag, RESULTS *r, unsigned iTest)
 	
 	float save_s[STATE_SIZE];
 	unsigned save_action;			//**TODO** may not need to be saved
+	unsigned save_seeds[4];
+	
 	static float *junk_activation = NULL;
 	if(!junk_activation) junk_activation = (float *)malloc(_p.hidden_nodes * sizeof(float));
 	
@@ -790,10 +789,20 @@ void run_test(AGENT_DATA *ag, RESULTS *r, unsigned iTest)
 		save_s[0] = ag->s[agent];
 		save_s[1] = ag->s[agent + _p.agents];
 		save_action = ag->action[agent];
+		save_seeds[0] = ag->seeds[agent];
+		save_seeds[1] = ag->seeds[agent + _p.agents];
+		save_seeds[2] = ag->seeds[agent + 2*_p.agents];
+		save_seeds[3] = ag->seeds[agent + 3*_p.agents];
 		
 		float agent_steps = 0.0f;
 		
 		for (int rep = 0; rep < _p.test_reps; rep++) {
+		
+			ag->seeds[agent] = save_seeds[0] + rep;
+			ag->seeds[agent + _p.agents] = save_seeds[1] + rep;
+			ag->seeds[agent + 2*_p.agents] = save_seeds[2] + rep;
+			ag->seeds[agent + 3*_p.agents] = save_seeds[3] + rep;
+
 			randomize_state(ag->s + agent, ag->seeds + agent, _p.agents);
 			int t;
 			unsigned action;
@@ -827,6 +836,10 @@ void run_test(AGENT_DATA *ag, RESULTS *r, unsigned iTest)
 		ag->s[agent] = save_s[0];
 		ag->s[agent + _p.agents] = save_s[1];
 		ag->action[agent] = save_action;
+		ag->seeds[agent] = save_seeds[0];
+		ag->seeds[agent + _p.agents] = save_seeds[1];
+		ag->seeds[agent + 2*_p.agents] = save_seeds[2];
+		ag->seeds[agent + 3*_p.agents] = save_seeds[3];
 	}
 	
 #ifdef DUMP_TESTED_AGENTS
@@ -974,17 +987,19 @@ __global__ void kernel_randomize_all_states()
 __global__ void reset_gradient_kernel()
 {
 	unsigned iGlobal = threadIdx.x + (blockIdx.x + blockIdx.y * gridDim.x) * blockDim.x;
-	if (iGlobal < dc_p.agents * dc_p.num_wgts * dc_p.num_actions) dc_ag.W[iGlobal] = 0.0f;
+	if (iGlobal < dc_p.agents * dc_p.num_wgts) dc_ag.W[iGlobal] = 0.0f;
 }
 
 
 /*
 	threads per block = number of test reps
-	number of blocks = number of agents
+	number of blocks = total number of agents (agents_per_group * trials)
  */	
 __global__ void test_kernel2(float *results)
 {
 	unsigned idx = threadIdx.x;
+//	if (idx >= dc_p.test_reps) return;
+	
 	unsigned iGlobal = blockIdx.x + blockIdx.y * gridDim.x;
 	
 	__shared__ unsigned s_seeds[4*BLOCK_SIZE];
@@ -1002,16 +1017,33 @@ __global__ void test_kernel2(float *results)
 	randomize_state(s_s + idx, s_seeds + idx, BLOCK_SIZE);
 	
 	unsigned action;
-	int t;
-	for (t = 0; t < dc_p.test_max; t++) {
-		best_action2(s_s + idx, &action, dc_ag.theta + iGlobal, BLOCK_SIZE, dc_p.agents, dc_p.hidden_nodes);
-		take_action(s_s + idx, action, s_s+idx, BLOCK_SIZE, dc_accel);
-		if (terminal_state(s_s + idx)) break;
+	int t = 0;
+	// only do the test for the actual number of test_reps
+	if (idx < dc_p.test_reps) {
+		for (t = 0; t < dc_p.test_max; t++) {
+			best_action2(s_s + idx, &action, dc_ag.theta + iGlobal, BLOCK_SIZE, dc_p.agents, dc_p.hidden_nodes);
+			take_action(s_s + idx, action, s_s+idx, BLOCK_SIZE, dc_accel);
+			if (terminal_state(s_s + idx)) break;
+		}
 	}
 	s_fitness[idx] = (float)t;
 	__syncthreads();
 	
 	// now calculate the average fitness by doing a reduction
+	unsigned half = BLOCK_SIZE / 2;
+	while (half > 0) {
+		if (idx < half && idx + half < dc_p.test_reps) {
+			s_fitness[idx] += s_fitness[idx + half];
+		}
+		half /= 2;
+		__syncthreads();
+	}
+	
+	// copy the fitness value to global memory for this agent, and store in results
+	if (idx == 0) {
+		dc_ag.fitness[iGlobal] = s_fitness[0] / (float)dc_p.test_reps;
+		results[iGlobal] = dc_ag.fitness[iGlobal];
+	}
 	
 }
 
@@ -1023,14 +1055,26 @@ __global__ void test_kernel(float *results)
 	
 	__shared__ float s_s[2 * BLOCK_SIZE];		// assumes state size is 2
 	__shared__ unsigned s_action[BLOCK_SIZE];
+	__shared__ unsigned s_seeds[4*BLOCK_SIZE];
 	 
 	// copy state from global to shared memory to preserve it
 	s_s[idx] = dc_ag.s[iGlobal];
 	s_s[idx + BLOCK_SIZE] = dc_ag.s[iGlobal + dc_p.stride];
 	s_action[idx] = dc_ag.action[iGlobal];
+	s_seeds[idx] = dc_ag.seeds[iGlobal];
+	s_seeds[idx + BLOCK_SIZE] = dc_ag.seeds[iGlobal + dc_p.stride];
+	s_seeds[idx + 2*BLOCK_SIZE] = dc_ag.seeds[iGlobal + 2*dc_p.stride];
+	s_seeds[idx + 3*BLOCK_SIZE] = dc_ag.seeds[iGlobal + 3*dc_p.stride];
 	 
 	float steps = 0.0f;
 	for (int rep = 0; rep < dc_p.test_reps; rep++) {
+		// set the global seeds to original value + the rep number
+		// to be consistent with test_kernel2
+		dc_ag.seeds[iGlobal] = s_seeds[idx] + rep;
+		dc_ag.seeds[iGlobal + dc_p.stride] = s_seeds[idx + BLOCK_SIZE] + rep;
+		dc_ag.seeds[iGlobal + 2*dc_p.stride] = s_seeds[idx + 2*BLOCK_SIZE] + rep;
+		dc_ag.seeds[iGlobal + 3*dc_p.stride] = s_seeds[idx + 3*BLOCK_SIZE] + rep;
+		
 		randomize_state(dc_ag.s + iGlobal, dc_ag.seeds + iGlobal, dc_p.stride);
 		int t;
 		unsigned action;
@@ -1047,6 +1091,10 @@ __global__ void test_kernel(float *results)
 	dc_ag.s[iGlobal] = s_s[idx];
 	dc_ag.s[iGlobal + dc_p.stride] = s_s[idx + BLOCK_SIZE];
 	dc_ag.action[iGlobal] = s_action[idx];
+	dc_ag.seeds[iGlobal] = s_seeds[idx];
+	dc_ag.seeds[iGlobal + dc_p.stride] = s_seeds[idx + BLOCK_SIZE];
+	dc_ag.seeds[iGlobal + 2*dc_p.stride] = s_seeds[idx + 2*BLOCK_SIZE];
+	dc_ag.seeds[iGlobal + 3*dc_p.stride] = s_seeds[idx + 3*BLOCK_SIZE];
 	
 	// save the result in the result array
 	results[iGlobal] = dc_ag.fitness[iGlobal];
@@ -1113,7 +1161,7 @@ void run_GPU(AGENT_DATA *agGPU, RESULTS *rGPU)
 
 	// reset gradient kernel has total number of threads equal to the gradient values
 	dim3 resetGradientBlockDim(512);
-	dim3 resetGradientGridDim(1 + (_p.agents * _p.num_wgts * _p.num_actions - 1) / 512);
+	dim3 resetGradientGridDim(1 + (_p.agents * _p.num_wgts - 1) / 512);
 	if (resetGradientGridDim.x > 65535) {
 		resetGradientGridDim.y = 1 + (resetGradientGridDim.x - 1) / 65535;
 		resetGradientGridDim.x = 1 + (resetGradientGridDim.x - 1) / resetGradientGridDim.y;
@@ -1154,10 +1202,14 @@ void run_GPU(AGENT_DATA *agGPU, RESULTS *rGPU)
 		// run tests (pre-sharing)
 		if (0 == ((i+1) % _p.chunks_per_test)) {
 			CUDA_EVENT_START;
-//			printf("test_kernel... (grid is (%d x %d) block is (%d x %d)\n", gridDim.x, gridDim.y, blockDim.x, blockDim.y);
-			test_kernel<<<gridDim, blockDim>>>(d_results + ((i+1) / _p.chunks_per_test) * _p.agents);
+//			printf("test_kernel... (grid is (%d x %d) block is (%d x %d), index is %d\n", gridDim.x, gridDim.y, blockDim.x, blockDim.y, ((i+1) / _p.chunks_per_test));
+//			device_dumpf("test results, prior to test_kernel", d_results, _p.num_tests, _p.agents);
+//			test_kernel<<<gridDim, blockDim>>>(d_results + ((i+1) / _p.chunks_per_test) * _p.agents);
+//			printf("test_kernel2... (grid is (%d x %d) block is (%d x %d), index is %d\n", testGridDim.x, testGridDim.y, testBlockDim.x, testBlockDim.y, ((i+1) / _p.chunks_per_test));
+			test_kernel2<<<testGridDim, testBlockDim>>>(d_results + ((i+1) / _p.chunks_per_test) * _p.agents);
 			CUDA_EVENT_STOP(timeTest);
 			CUT_CHECK_ERROR("test_kernel execution failed");
+//			device_dumpf("test results, after test_kernel", d_results, _p.num_tests, _p.agents);
 		}
 		
 //		dump_agentsGPU("after testing", agGPU);
@@ -1170,7 +1222,9 @@ void run_GPU(AGENT_DATA *agGPU, RESULTS *rGPU)
 	CUDA_EVENT_START;
 	float *d_minval;
 	unsigned *d_mincol;
+//	device_dumpf("test results, prior to reduction", d_results, _p.num_tests, _p.agents);
 	unsigned min_stride = row_argmin(d_results, _p.agents, _p.num_tests, &d_minval, &d_mincol);
+//	printf("min_stride = %d\n", min_stride);
 //	device_dumpf("d_minval", d_minval, _p.num_tests, 1 + (_p.agents - 1)/(2*BLOCK_SIZE));
 //	device_dumpui("d_minval", d_mincol, _p.num_tests, 1 + (_p.agents - 1)/(2*BLOCK_SIZE));
 	row_reduce(d_results, _p.agents, _p.num_tests);

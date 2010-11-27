@@ -1,0 +1,25 @@
+[MCAR][TRIALS      1][TIME_STEPS     16][SHARING_INTERVAL     16][SHARE_BEST_PCT 0.5000][AGENT_GROUP_SIZE      4][ALPHA 0.2000][EPSILON 0.0000][GAMMA 0.9500][LAMBDA 0.2000][TEST_INTERVAL      4][TEST_REPS    100][TEST_MAX   1000][RESTART_INTERVAL      4][CHUNK_INTERVAL      4]
+----|
+....
+     443.169 ms for run on CPU
+CPU: 
+    TEST  Avg Steps
+   [   0]       0,        0,        0
+   [   4]     709,      279,        3
+   [   8]     419,      288,        1
+   [  12]     704,      298,        3
+   [  16]     889,      744,        2
+----|
+....
+    2398.357 ms for total GPU time
+       0.027 ms for reset_gradient_kernel time
+       0.481 ms for learn_kernel time
+    2391.461 ms for test_kernel time
+       1.608 ms for reduce_kernel time
+GPU: 
+    TEST  Avg Steps
+   [   0]     564,      275,        2
+   [   4]     709,      279,        3
+   [   8]     419,      288,        1
+   [  12]     704,      298,        3
+   [  16]     889,      744,        2

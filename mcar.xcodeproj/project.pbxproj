@@ -24,6 +24,8 @@
 		10D25445129FF459004F4791 /* junk */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = junk; sourceTree = "<group>"; };
 		10D2568E12A14ECE004F4791 /* reduction.cu */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cuda; path = reduction.cu; sourceTree = "<group>"; };
 		10D2568F12A14ECE004F4791 /* reduction.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = reduction.h; sourceTree = "<group>"; };
+		10D2572F12A19D7C004F4791 /* mcar_test_restart_small */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = mcar_test_restart_small; sourceTree = "<group>"; };
+		10D257AA12A1ADD8004F4791 /* todo.txt */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = todo.txt; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -65,9 +67,11 @@
 		106FF7E9119EE654000CD6C8 = {
 			isa = PBXGroup;
 			children = (
+				10D257AA12A1ADD8004F4791 /* todo.txt */,
 				104A9B9D129D22A300DC5289 /* check_calcs.numbers */,
 				104A97341299772C00DC5289 /* notes.txt */,
 				10D25445129FF459004F4791 /* junk */,
+				10D2572F12A19D7C004F4791 /* mcar_test_restart_small */,
 				104A96F9129951C400DC5289 /* utils */,
 				10294D9B11A1B93300AAF551 /* source */,
 				10294D9C11A1B93D00AAF551 /* other */,

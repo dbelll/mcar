@@ -20,4 +20,4 @@ __host__ void row_reduce(float *d_data, unsigned cols, unsigned rows);
  */
 __host__ unsigned row_argmin(float *d_data, unsigned cols, unsigned rows, float **pd_minval, unsigned **pd_mincol);
 
-#define BIG_FLOAT 9.99e99
+#define BIG_FLOAT 9.99e49 
