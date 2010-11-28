@@ -12,7 +12,7 @@
 #pragma mark -
 #pragma mark Problem Constants
 
-#define BLOCK_SIZE 256
+#define BLOCK_SIZE 128
 
 #define MIN_X -1.2f
 #define MAX_X 0.5f
@@ -94,6 +94,10 @@ typedef struct{
 	unsigned num_states;	// alternate names
 	unsigned stride;
 	unsigned num_hidden;
+	
+	unsigned iActionStart[NUM_ACTIONS];
+	unsigned offsetToOutputBias;
+	
 } PARAMS;
 
 

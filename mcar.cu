@@ -107,6 +107,7 @@ DUAL_PREFIX float calc_Q(float *s, unsigned a, float *theta, unsigned stride, un
 	theta += iActionStart(a, stride, num_hidden);
 	
 	unsigned iOutputBias = offsetToOutputBias(stride, num_hidden);
+	
 	float result = 0.0f;
 
 	// loop over each hidden node
@@ -139,9 +140,8 @@ DUAL_PREFIX float calc_Q(float *s, unsigned a, float *theta, unsigned stride, un
 	return result;
 }
 
-// Calculate the output of the neural net for specified state and action.
-// Hidden node activation values are stored in activation array and the output Q value is returned.
-DUAL_PREFIX float calc_Q2(float *s, unsigned a, float *theta, unsigned stride_s, unsigned stride_theta, unsigned num_hidden)
+// different strides for state and theta
+DUAL_PREFIX float calc_Q2(float *s, unsigned a, float *theta, unsigned stride_s, unsigned stride_theta, unsigned num_hidden, float *activation)
 {
 	// adjust theta to point to beginning of this action's weights
 	theta += iActionStart(a, stride_theta, num_hidden);
@@ -163,7 +163,9 @@ DUAL_PREFIX float calc_Q2(float *s, unsigned a, float *theta, unsigned stride_s,
 		}
 		
 		// apply sigmoid and accumulate in the result
-		result += theta[iOutputBias + (1+j) * stride_theta] * sigmoid(in);
+		in = sigmoid(in); 
+		if (activation) activation[j*stride_theta] = in;
+		result += theta[iOutputBias + (1+j) * stride_theta] * in;
 
 #ifdef DEBUG_CALC_Q
 		printf("calc_Q for state (%9.4f, %9.4f) and action %d ... ", s[0], s[stride_s], a);
@@ -344,13 +346,13 @@ DUAL_PREFIX float best_action(float *s, unsigned *pAction, float *theta, unsigne
 	return bestQ;
 }
 
-DUAL_PREFIX float best_action2(float *s, unsigned *pAction, float *theta, unsigned stride_s, unsigned stride_theta, unsigned num_hidden)
+DUAL_PREFIX float best_action2(float *s, unsigned *pAction, float *theta, unsigned stride_s, unsigned stride_theta, unsigned num_hidden, float *activation)
 {
 	// calculate Q value for each action
 	unsigned best_action = 0;
-	float bestQ = calc_Q2(s, 0, theta, stride_s, stride_theta, num_hidden);
+	float bestQ = calc_Q2(s, 0, theta, stride_s, stride_theta, num_hidden, activation);
 	for (int k = 1; k < NUM_ACTIONS; k++) {
-		float tempQ = calc_Q2(s, k, theta, stride_s, stride_theta, num_hidden);
+		float tempQ = calc_Q2(s, k, theta, stride_s, stride_theta, num_hidden, activation);
 		if (tempQ > bestQ) {
 			bestQ = tempQ;
 			best_action = k;
@@ -374,6 +376,21 @@ DUAL_PREFIX float choose_action(float *s, unsigned *pAction, float *theta, float
 		return best_action(s, pAction, theta, stride, num_hidden, activation);
 	}
 }
+
+// state is in shared memory with stride stride_s,
+// other agent values are in global memory with stride_g
+//DUAL_PREFIX float choose_action2(float *s, unsigned *pAction, float *theta, float epsilon, unsigned stride_s, unsigned stride_g, unsigned num_hidden, float *activation, unsigned *seeds)
+//{
+//	if (epsilon > 0.0f && RandUniform(seeds, stride_g) < epsilon){
+//		// choose random action
+//		float r = RandUniform(seeds, stride_g);
+//		*pAction = r * NUM_ACTIONS;
+//		return calc_Q2(s, *pAction, theta, stride_s, stride_g, num_hidden, activation);
+//	}else{
+//		// choose the best action
+//		return best_action(s, pAction, theta, stride, num_hidden, activation);
+//	}
+//}
 
 DUAL_PREFIX unsigned terminal_state(float *s)
 {
@@ -421,11 +438,24 @@ DUAL_PREFIX float rand_in_range(unsigned *seeds, unsigned stride, float min, flo
 	return r;
 }
 
+
 // randomize the position and velocity uniformly over their range
 DUAL_PREFIX void randomize_state(float *s, unsigned *seeds, unsigned stride)
 {
 	s[0] = rand_in_range(seeds, stride, MIN_X, MAX_X);
 	s[stride] = rand_in_range(seeds, stride, MIN_VEL, MAX_VEL);
+}
+
+DUAL_PREFIX void randomize_state2(float *s, unsigned *seeds, unsigned stride_s, unsigned stride_seeds)
+{
+	s[0] = rand_in_range(seeds, stride_seeds, MIN_X, MAX_X);
+	s[stride_s] = rand_in_range(seeds, stride_seeds, MIN_VEL, MAX_VEL);
+}
+
+__device__ void randomize_stateGPU(unsigned ag)
+{
+	dc_ag.s[ag] = rand_in_range(dc_ag.seeds + ag, dc_p.stride, MIN_X, MAX_X);
+	dc_ag.s[ag + dc_p.stride] = rand_in_range(dc_ag.seeds + ag, dc_p.stride, MIN_VEL, MAX_VEL);
 }
 
 void randomize_all_states(AGENT_DATA *ag)
@@ -446,8 +476,20 @@ void randomize_all_states(AGENT_DATA *ag)
 
 #pragma mark -
 #pragma mark CPU
+void set_params(PARAMS p){
+	_p = p;
 
-void set_params(PARAMS p){ _p = p;}
+	// fill in some calculated values in the parameters
+	_p.iActionStart[0] = iActionStart(0, p.agents, p.hidden_nodes);
+	_p.iActionStart[1] = iActionStart(1, p.agents, p.hidden_nodes);
+	_p.iActionStart[2] = iActionStart(2, p.agents, p.hidden_nodes);
+
+	printf("iActionStart values %d, %d, %d\n", _p.iActionStart[0], _p.iActionStart[1], _p.iActionStart[2]);
+	
+	_p.offsetToOutputBias = offsetToOutputBias(p.agents, p.hidden_nodes);
+	printf("_p.agents = %d, _p.hidden_nodes = %d\n", _p.agents, _p.hidden_nodes);
+	
+}
 
 // dump agent data to stdout
 // uses parameter values in _p
@@ -1029,7 +1071,7 @@ __global__ void test_kernel2(float *results)
 	// only do the test for the actual number of test_reps
 	if (idx < dc_p.test_reps) {
 		for (t = 0; t < dc_p.test_max; t++) {
-			best_action2(s_s + idx, &action, dc_ag.theta + iGlobal, BLOCK_SIZE, dc_p.agents, dc_p.hidden_nodes);
+			best_action2(s_s + idx, &action, dc_ag.theta + iGlobal, BLOCK_SIZE, dc_p.agents, dc_p.hidden_nodes, NULL);
 			take_action(s_s + idx, action, s_s+idx, BLOCK_SIZE, dc_accel);
 			if (terminal_state(s_s + idx)) break;
 		}
@@ -1111,13 +1153,25 @@ __global__ void test_kernel(float *results)
 __global__ void learn_kernel(unsigned steps, unsigned isRestart)
 {
 	unsigned iGlobal = threadIdx.x + (blockIdx.x + blockIdx.y * gridDim.x) * blockDim.x;
-//	unsigned idx = threadIdx.x;
+	unsigned idx = threadIdx.x;
+
 	if (iGlobal >= dc_p.agents) return;
 	
+	__shared__ float s_s[2*BLOCK_SIZE];
+	__shared__ unsigned s_action[BLOCK_SIZE];
+	
+	// copy state and action to shared memory
+	s_s[idx] = dc_ag.s[iGlobal];
+	s_s[idx + BLOCK_SIZE] = dc_ag.s[iGlobal + dc_p.agents];
+	s_action[idx] = dc_ag.action[iGlobal];
+	
+	
 	if (isRestart) {
-		randomize_state(dc_ag.s + iGlobal, dc_ag.seeds + iGlobal, dc_p.agents);
+		randomize_stateGPU(iGlobal);
+//		randomize_state(dc_ag.s + iGlobal, dc_ag.seeds + iGlobal, dc_p.stride);
+//		randomize_state2(s_s + idx, dc_ag.seeds + iGlobal, BLOCK_SIZE, dc_p.stride);
 		// gradients have already been reset
-		choose_action(dc_ag.s + iGlobal, dc_ag.action +iGlobal, dc_ag.theta + iGlobal, dc_p.epsilon, dc_p.agents, dc_p.hidden_nodes, dc_ag.activation + iGlobal, dc_ag.seeds + iGlobal);
+		choose_action(dc_ag.s + iGlobal, dc_ag.action + iGlobal, dc_ag.theta + iGlobal, dc_p.epsilon, dc_p.agents, dc_p.hidden_nodes, dc_ag.activation + iGlobal, dc_ag.seeds + iGlobal);
 		calc_Q(dc_ag.s + iGlobal, dc_ag.action[iGlobal], dc_ag.theta + iGlobal, dc_p.agents, dc_p.hidden_nodes, dc_ag.activation + iGlobal);
 	}
 	
@@ -1135,6 +1189,11 @@ __global__ void learn_kernel(unsigned steps, unsigned isRestart)
 		update_thetas(dc_ag.s + iGlobal, dc_ag.theta + iGlobal, dc_ag.W + iGlobal, dc_p.alpha, error, dc_p.agents, dc_p.hidden_nodes, dc_ag.activation + iGlobal);
 		if (success) reset_gradient(dc_ag.W + iGlobal, dc_p.agents, dc_p.num_wgts);
 	}
+	
+	// copy state and action back to global memory
+//	dc_ag.s[iGlobal] = s_s[idx];
+//	dc_ag.s[iGlobal + dc_p.agents] = s_s[idx + BLOCK_SIZE];
+//	dc_ag.action[iGlobal] = s_action[idx];
 }
 
 // run on the GPU, storing results in the RESULTS array provided
