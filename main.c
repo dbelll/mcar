@@ -43,8 +43,9 @@ void display_help()
 	
 	printf("  --TEST_INTERVAL       time steps between testing of agent's learning ability\n");
 	printf("  --TEST_REPS			number of repititions in each test\n");
-	printf("  --TEST_MAX            maximum duration of each test repititon, in time steps");
+	printf("  --TEST_MAX            maximum duration of each test repititon, in time steps\n");
 	
+	printf("  --DUMP_BEST           print out the best agent at the end\n");
 	printf("  --HELP                print this help message\n");
 	printf("default values will be used for any parameters not on command line\n");
 }
@@ -92,6 +93,7 @@ PARAMS read_params(int argc, const char **argv)
 	p.run_on_CPU = GET_PARAM("RUN_ON_CPU", 1);
 	p.run_on_GPU = GET_PARAM("RUN_ON_GPU", 1);
 	p.no_print = PARAM_PRESENT("NO_PRINT");
+	p.dump_best = PARAM_PRESENT("DUMP_BEST");
 	
 	p.test_interval = GET_PARAM("TEST_INTERVAL", p.time_steps);
 	p.test_reps = GET_PARAM("TEST_REPS", DEFAULT_TEST_REPS);
@@ -152,11 +154,10 @@ PARAMS read_params(int argc, const char **argv)
 	p.state_size = STATE_SIZE;		// x and x'
 	p.num_actions = NUM_ACTIONS;	// left, none, and right
 	
-	printf("[MCAR][TRIALS%7d][TIME_STEPS%7d][SHARING_INTERVAL%7d][SHARE_BEST_PCT%7.4f][AGENT_GROUP_SIZE%7d][ALPHA%7.4f]"
-		   "[EPSILON%7.4f][GAMMA%7.4f][LAMBDA%7.4f][TEST_INTERVAL%7d][TEST_REPS%7d][TEST_MAX%7d][RESTART_INTERVAL%7d][CHUNK_INTERVAL%7d]\n", 
-		   p.trials, p.time_steps, p.sharing_interval, p.share_best_pct, p.agent_group_size, p.alpha, 
-		   p.epsilon, p.gamma, p.lambda, p.test_interval, p.test_reps, p.test_max, p.restart_interval, p.chunk_interval);
+	printf("[MCAR][HIDDEN_NODES%3d[TRIALS%7d][TIME_STEPS%7d][SHARING_INTERVAL%7d][SHARE_BEST_PCT%7.4f][AGENT_GROUP_SIZE%7d][ALPHA%7.4f]"
+		   "[EPSILON%7.4f][GAMMA%7.4f][LAMBDA%7.4f][TEST_INTERVAL%7d][TEST_REPS%7d][TEST_MAX%7d][RESTART_INTERVAL%7d][CHUNK_INTERVAL%7d]\n", p.hidden_nodes, p.trials, p.time_steps, p.sharing_interval, p.share_best_pct, p.agent_group_size, p.alpha, p.epsilon, p.gamma, p.lambda, p.test_interval, p.test_reps, p.test_max, p.restart_interval, p.chunk_interval);
 
+	// aliases
 	p.stride = p.agents;
 	p.num_hidden = p.hidden_nodes;
 	p.num_states = p.state_size;
@@ -194,6 +195,9 @@ int main(int argc, const char **argv)
 #ifdef DUMP_FINAL_AGENTS
 		dump_agentsGPU("Final agents on GPU", agGPU);
 #endif
+		if (p.dump_best){
+			dump_one_agentGPU("Best Agent on GPU:", agGPU, rGPU->best_agent[p.num_tests-1]);
+		}
 		free_agentsGPU(agGPU);
 	}
 	

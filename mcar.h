@@ -12,7 +12,7 @@
 #pragma mark -
 #pragma mark Problem Constants
 
-#define BLOCK_SIZE 512
+#define BLOCK_SIZE 256
 
 #define MIN_X -1.2f
 #define MAX_X 0.5f
@@ -70,6 +70,7 @@ typedef struct{
 	unsigned run_on_CPU;		// flag indicating to run on CPU
 	unsigned run_on_GPU;		// flag indicating to run on GPU
 	unsigned no_print;			// flag to suppress print-out
+	unsigned dump_best;			// flag to print out the best agent at the end
 	
 	unsigned test_interval;		// number of time steps between testing
 	unsigned test_reps;			// number of repitions of the test
@@ -144,6 +145,7 @@ void run_CPU(AGENT_DATA *cv, RESULTS *r);
 
 AGENT_DATA *initialize_agentsGPU(AGENT_DATA *agCPU);
 void dump_agentsGPU(const char *str, AGENT_DATA *agGPU);
+void dump_one_agentGPU(const char *str, AGENT_DATA *agGPU, unsigned ag);
 void free_agentsGPU(AGENT_DATA *agGPU);
 void run_GPU(AGENT_DATA *ag, RESULTS *r);
 

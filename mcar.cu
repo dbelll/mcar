@@ -536,7 +536,7 @@ void display_results(const char *str, RESULTS *r)
 	printf("%s \n", str);
 	printf("    TEST  Avg Steps\n");
 	for (int i = 0; i < _p.num_tests; i++) {
-		printf("   [%4d]%8.0f, %8.0f, %8d\n", i*_p.test_interval, r->avg_fitness[i], r->best_fitness[i], r->best_agent[i]);
+		printf("   [%10d]%8.0f, %8.0f, %8d\n", i*_p.test_interval, r->avg_fitness[i], r->best_fitness[i], r->best_agent[i]);
 	}
 }
 
@@ -931,6 +931,14 @@ void dump_agentsGPU(const char *str, AGENT_DATA *agGPU)
 {
 	AGENT_DATA *agCopy = copy_GPU_agents(agGPU);
 	dump_agents(str, agCopy);
+	free(agCopy);
+}
+
+void dump_one_agentGPU(const char *str, AGENT_DATA *agGPU, unsigned ag)
+{
+	AGENT_DATA *agCopy = copy_GPU_agents(agGPU);
+	printf("%s\n", str);
+	dump_agent(agCopy, ag);
 	free(agCopy);
 }
 

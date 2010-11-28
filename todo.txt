@@ -1,6 +1,5 @@
-Debug test_kernel2
-
 
 Only do reduction of best results across agents groups, not across the trials.  After getting the
 best result for each agent group, take the average over all the trials.
 
+Reduce number of arguments in device function calls
