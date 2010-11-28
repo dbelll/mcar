@@ -266,7 +266,7 @@ DUAL_PREFIX void accumulate_gradient(float *s, unsigned a, float *theta, unsigne
 	}
 }
 
-DUAL_PREFIX void accumulate_gradient2(float *s, unsigned a, float *theta, unsigned stride_s, unsigned stride_g, unsigned num_hidden, unsigned num_wgts, float *activation, float *W, float lambda, float gamma)
+DUAL_PREFIX void accumulate_gradient2(float *s, unsigned a, float *theta, unsigned stride_g, unsigned num_hidden, unsigned num_wgts, float *activation, float *W, float lambda, float gamma)
 {
 	// First, decay all the existing gradients by lambda * gamma
 	for (int i = 0; i < num_wgts; i++) {
@@ -308,7 +308,7 @@ DUAL_PREFIX void accumulate_gradient2(float *s, unsigned a, float *theta, unsign
 
 		// next the states
 		for (int k = 0; k < STATE_SIZE; k++) {
-			W[iHidBias + (k+1)*stride_g] += s[k * stride_s] * grad;
+			W[iHidBias + (k+1)*stride_g] += s[k * BLOCK_SIZE] * grad;
 		}
 	}
 }
@@ -1257,7 +1257,7 @@ __global__ void learn_kernel(unsigned steps, unsigned isRestart)
 	
 	for (int t = 0; t < steps; t++) {
 		float Q_curr = calc_Q2(s_s + idx, s_action[idx], dc_ag.theta + iGlobal, dc_p.agents, dc_p.hidden_nodes, dc_ag.activation + iGlobal);
-		accumulate_gradient2(s_s + idx, s_action[idx], dc_ag.theta + iGlobal, BLOCK_SIZE, dc_p.agents, dc_p.hidden_nodes, dc_p.num_wgts, dc_ag.activation + iGlobal, dc_ag.W + iGlobal, dc_p.lambda, dc_p.gamma);
+		accumulate_gradient2(s_s + idx, s_action[idx], dc_ag.theta + iGlobal, dc_p.agents, dc_p.hidden_nodes, dc_p.num_wgts, dc_ag.activation + iGlobal, dc_ag.W + iGlobal, dc_p.lambda, dc_p.gamma);
 		float reward = take_action(s_s + idx, s_action[idx], s_s + idx, BLOCK_SIZE, dc_accel);
 		unsigned success = terminal_state(s_s + idx);
 		
