@@ -122,8 +122,8 @@ DUAL_PREFIX float calc_Q(float *s, unsigned a, float *theta, unsigned stride, un
 			in += theta[iBias + (1+k) * stride] * s[k * stride];
 		}
 		
-//		activation[j * stride] = sigmoid(in);
-		result += theta[iOutputBias + (1+j) * stride] * sigmoid(in);
+		activation[j * stride] = sigmoid(in);
+		result += theta[iOutputBias + (1+j) * stride] * activation[j*stride];
 
 #ifdef DEBUG_CALC_Q
 		printf("calc_Q for state (%9.4f, %9.4f) and action %d ... ", s[0], s[stride], a);
