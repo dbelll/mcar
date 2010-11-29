@@ -1175,7 +1175,8 @@ __global__ void test_kernel3(float *wins)
 	if (idx < dc_p.test_reps) {
 		int done1 = 0;
 		int done2 = 0;
-		for (int t = 0; t < dc_p.test_max; t++) {
+		int t;
+		for (t = 0; t < dc_p.test_max; t++) {
 			if (!done1) {
 				best_action2(s_s1 + idx, &action1, dc_ag.theta + ag1, dc_p.agents, dc_p.hidden_nodes, NULL);
 				take_action(s_s1 + idx, action1, s_s1 + idx, BLOCK_SIZE, dc_accel);
@@ -1188,14 +1189,13 @@ __global__ void test_kernel3(float *wins)
 				take_action(s_s2 + idx, action2, s_s2 + idx, BLOCK_SIZE, dc_accel);
 				if (terminal_state(s_s2 + idx)) done2 = 1 + t;
 			}
-			if (done1 && done2) break;
+			if (done1 || done2) break;	// stop when either agent is done
 		}
-		if (!done1) done1 = dc_p.test_max+1;
-		if (!done2) done2 = dc_p.test_max+1;
-		
-		s_wins[idx] += (done2 - done1) / (float)(dc_p.test_reps * dc_p.test_max) ;
+		if (!done1) done1 = t + 2;
+		if (!done2) done2 = t + 2;
+		if (done1 < done2) s_wins[idx] += 1.0f;
+		if (done1 > done2) s_wins[idx] += -1.0f;
 	}
-	
 	__syncthreads();
 	
 	// do a reduction on the results
@@ -1210,7 +1210,7 @@ __global__ void test_kernel3(float *wins)
 	
 	// copy the wins to global memory
 	if (idx == 0) {
-		wins[ag1 * dc_p.agents + ag2] = s_wins[0];
+		wins[ag1 * dc_p.agents + ag2] = s_wins[0] / dc_p.test_reps;
 	}
 }
 
@@ -1405,6 +1405,7 @@ __global__ void share_best_kernel(float *d_agent_scores, unsigned *d_iBest)
 		for (int i = 0; i < dc_p.num_wgts; i++) {
 			dc_ag.theta[idx + i * dc_p.agents] = dc_ag.theta[i_best + i * dc_p.agents];
 		}
+		dc_ag.alpha[idx] /= 2.0f;
 	}
 }
 
@@ -1547,10 +1548,9 @@ void run_GPU(AGENT_DATA *agGPU, RESULTS *rGPU)
 			test_kernel2<<<test2GridDim, test2BlockDim>>>(d_results + ((i+1) / _p.chunks_per_test) * _p.agents);
 			
 			test_kernel3<<<test3GridDim, test3BlockDim>>>(d_wins);
-//			device_dumpf("round-robin results", d_wins, _p.agents, _p.agents);
-//			dump_agentsGPU("after testing, before sharing", agGPU);
+			dump_agentsGPU("after testing, before sharing", agGPU);
 			share_best(d_wins, d_agent_scores);
-//			dump_agentsGPU("after sharing", agGPU);
+			dump_agentsGPU("after sharing", agGPU);
 
 			CUDA_EVENT_STOP(timeTest);
 			CUT_CHECK_ERROR("test_kernel execution failed");
