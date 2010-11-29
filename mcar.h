@@ -130,6 +130,7 @@ typedef struct{
 						// must be stored so they can be used during back propagation
 	unsigned *action;	// temp storage for action to be taken at the next action
 	float *fitness;		// fitness value from last test
+	float *alpha;		// personal alpha value
 } AGENT_DATA;		// may hold either host or device pointers
 
 typedef struct{

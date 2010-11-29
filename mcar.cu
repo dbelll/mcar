@@ -588,7 +588,7 @@ void dump_agent(AGENT_DATA *ag, unsigned agent)
 			printf("        hidden%2d --> output   %9.6f %9.6f\n", h, ag->theta[i], ag->W[i]); i += _p.agents;
 		}
 	}
-	printf("fitness = %5.0f\n", ag->fitness[agent]);
+	printf("fitness = %5.3f   alpha = %7.4f\n", ag->fitness[agent], ag->alpha[agent]);
 	printf("\nCurrent State: x = %9.6f  x' = %9.6f, stored action is %s\n", ag->s[agent], ag->s[agent + _p.agents], string_for_action(ag->action[agent]));
 
 	printf("        HIDDEN NODE    ACTIVATION\n");
@@ -724,6 +724,13 @@ float *create_fitness(unsigned num_agents)
 	return fitness;
 }
 
+float *create_alpha(unsigned num_agents)
+{
+	float *alpha = (float *)malloc(num_agents * sizeof(float));
+	for (int i = 0; i < num_agents; i++) alpha[i] = _p.alpha;
+	return alpha;
+}
+
 float *create_activation(unsigned num_agents, unsigned num_hidden)
 {
 #ifdef VERBOSE
@@ -745,10 +752,10 @@ AGENT_DATA *initialize_agentsCPU()
 	ag->theta = create_theta(_p.agents, _p.num_wgts, _p.initial_theta_min, _p.initial_theta_max);
 	ag->W = create_W(_p.agents, _p.num_wgts);
 	ag->s = create_states(_p.agents, _p.state_size, ag->seeds);
-//	ag->Q = create_Q(_p.agents, _p.num_actions);
 	ag->action = create_actions(_p.agents, _p.num_actions);
 	ag->activation = create_activation(_p.agents, _p.hidden_nodes);
 	ag->fitness = create_fitness(_p.agents);
+	ag->alpha = create_alpha(_p.agents);
 	
 	randomize_all_states(ag);
 	
@@ -768,6 +775,7 @@ void free_agentsCPU(AGENT_DATA *ag)
 		if (ag->action){ free(ag->action); ag->action = NULL;}
 		if (ag->activation){ free(ag->activation); ag->activation = NULL;}
 		if (ag->fitness){ free(ag->fitness); ag->fitness = NULL;}
+		if (ag->alpha) {free(ag->alpha); ag->alpha = NULL;}
 		free(ag);
 	}
 }
@@ -1041,6 +1049,7 @@ AGENT_DATA *copy_GPU_agents(AGENT_DATA *agGPU)
 	agCopy->activation = host_copyf(agGPU->activation, _p.agents * _p.hidden_nodes);
 	agCopy->action = host_copyui(agGPU->action, _p.agents);
 	agCopy->fitness = host_copyf(agGPU->fitness, _p.agents);
+	agCopy->alpha = host_copyf(agGPU->alpha, _p.agents);
 	return agCopy;
 }
 
@@ -1078,6 +1087,7 @@ AGENT_DATA *initialize_agentsGPU(AGENT_DATA *agCPU)
 	ag->activation = device_copyf(agCPU->activation, _p.agents * _p.hidden_nodes);
 	ag->action = device_copyui(agCPU->action, _p.agents);
 	ag->fitness = device_copyf(agCPU->fitness, _p.agents);
+	ag->alpha = device_copyf(agCPU->alpha, _p.agents);
 	
 	cudaMemcpyToSymbol("dc_p", &_p, sizeof(PARAMS));
 	cudaMemcpyToSymbol("dc_ag", ag, sizeof(AGENT_DATA));
@@ -1102,13 +1112,14 @@ void free_agentsGPU(AGENT_DATA *ag)
 		if (ag->activation){ cudaFree(ag->activation); ag->activation = NULL;}
 		if (ag->action){ cudaFree(ag->action); ag->action = NULL;}
 		if (ag->fitness){ cudaFree(ag->fitness); ag->fitness = NULL;}
+		if (ag->alpha){ cudaFree(ag->alpha); ag->alpha = NULL;}
 		free(ag);
 	}
 }
 
-__global__ void kernel_randomize_all_states()
-{
-}
+//__global__ void kernel_randomize_all_states()
+//{
+//}
 
 __global__ void reset_gradient_kernel()
 {
@@ -1182,7 +1193,7 @@ __global__ void test_kernel3(float *wins)
 		if (!done1) done1 = dc_p.test_max+1;
 		if (!done2) done2 = dc_p.test_max+1;
 		
-		s_wins[idx] += (done2 - done1) / 1000.0f;
+		s_wins[idx] += (done2 - done1) / (float)(dc_p.test_reps * dc_p.test_max) ;
 	}
 	
 	__syncthreads();
@@ -1322,6 +1333,7 @@ __global__ void learn_kernel(unsigned steps, unsigned isRestart)
 	__shared__ float s_s[2*BLOCK_SIZE];
 	__shared__ unsigned s_action[BLOCK_SIZE];
 	__shared__ unsigned s_seeds[4*BLOCK_SIZE];
+	__shared__ float s_alpha[BLOCK_SIZE];
 	
 	// copy state, action, and seeds to shared memory
 	s_s[idx] = dc_ag.s[iGlobal];
@@ -1331,6 +1343,7 @@ __global__ void learn_kernel(unsigned steps, unsigned isRestart)
 	s_seeds[idx + BLOCK_SIZE] = dc_ag.seeds[iGlobal + dc_p.agents];
 	s_seeds[idx + 2*BLOCK_SIZE] = dc_ag.seeds[iGlobal + 2*dc_p.agents];
 	s_seeds[idx + 3*BLOCK_SIZE] = dc_ag.seeds[iGlobal + 3*dc_p.agents];
+	s_alpha[idx] = dc_ag.alpha[iGlobal];
 	
 	if (isRestart) {
 //		randomize_stateGPU(iGlobal);
@@ -1351,7 +1364,8 @@ __global__ void learn_kernel(unsigned steps, unsigned isRestart)
 		float Q_next = choose_action2(s_s + idx, s_action + idx, dc_ag.theta + iGlobal, dc_p.epsilon, dc_p.agents, dc_p.hidden_nodes, dc_ag.activation + iGlobal, s_seeds + idx);
 //		if (success) Q_next = 0.0f;
 		float error = reward + dc_p.gamma * Q_next - Q_curr;
-		float _alpha = dc_p.alpha;
+		float _alpha = s_alpha[idx];
+//		float _alpha = dc_p.alpha;
 //		if (success) _alpha = 1.0f;
 		update_thetas(NULL, dc_ag.theta + iGlobal, dc_ag.W + iGlobal, _alpha, error, dc_p.agents, dc_p.hidden_nodes, dc_ag.activation + iGlobal);
 		if (success) reset_gradient(dc_ag.W + iGlobal, dc_p.agents, dc_p.num_wgts);
@@ -1367,6 +1381,78 @@ __global__ void learn_kernel(unsigned steps, unsigned isRestart)
 	dc_ag.seeds[iGlobal + 3*dc_p.agents] = s_seeds[idx + 3*BLOCK_SIZE];
 }
 
+// total x dimension is the agent number
+// y dimension is used for copying the arrays
+__global__ void share_best_kernel(float *d_agent_scores, unsigned *d_iBest)
+{
+	unsigned idx = threadIdx.x + blockIdx.x * blockDim.x;
+	
+	if (idx >= dc_p.agents) return;
+
+	// if this is the best agent, set it's alpha to 0.0f to preserve
+	// otherwise reset the alpha
+	if (idx == *d_iBest) dc_ag.alpha[idx] = 0.0f;
+	else dc_ag.alpha[idx] = dc_p.alpha;
+
+	// do nothing if agent has a positive score
+	if (d_agent_scores[idx] >= 0.0f) return;
+	
+	unsigned i_best = *d_iBest;
+	
+	// with a probability share_best_pct, copy best agents weights to this agent
+	float r = RandUniform(dc_ag.seeds+idx, dc_p.agents);
+	if (r < dc_p.share_best_pct) {
+		for (int i = 0; i < dc_p.num_wgts; i++) {
+			dc_ag.theta[idx + i * dc_p.agents] = dc_ag.theta[i_best + i * dc_p.agents];
+		}
+	}
+}
+
+/*
+	Share based on results of competition.
+	d_wins is an (_p.agents x _p.agents) array on the device with the results of the round-robin
+	d_agent_scores will be filled in with the net score for each agent
+
+	Strategy:	All agents with a non-negative row score will be preserved
+				agents with row score < zero will be copied from the following (or previous) agent
+*/
+void share_best(float *d_wins, float *d_agent_scores)
+{
+	device_dumpf("start of share_best\n   d_wins:", d_wins, _p.agents, _p.agents);
+	
+	// first accumulate the column totals times -1
+	col_reduce_x_k(d_wins, d_agent_scores, _p.agents, _p.agents, -1.0f);
+//	device_dumpf("   d_agent_scores with column totals times -1:", d_agent_scores, 1, _p.agents);
+	
+	// next, calculate the row totals
+	row_reduce(d_wins, _p.agents, _p.agents);
+//	device_dumpf("   d_wins after row reduction:", d_wins, _p.agents, _p.agents);
+	
+	// add row totals to the column totals in d_agent_scores
+	vsum(d_agent_scores, d_wins, _p.agents, _p.agents);
+	device_dumpf("   d_agent_scores after adding in row totals:", d_agent_scores, 1, _p.agents);
+	
+	
+	float *d_bestVal;
+	unsigned *d_iBest;
+//	printf(" about to call row_argmax to determine best agent\n");
+	row_argmax(d_agent_scores, _p.agents, 1, &d_bestVal, &d_iBest);
+
+	static unsigned firstTime = 1;
+	static dim3 blockDim(BLOCK_SIZE);
+	static dim3 gridDim;
+	if (firstTime) {
+		gridDim.x = 1 + (blockDim.x-1)/_p.agents;
+//		gridDim.y = _p.num_wgts;
+//		if (gridDim.y < 4) gridDim.y = 4;		// need at least 4 to copy the seeds
+		firstTime = 0;
+	}
+	
+	share_best_kernel<<<gridDim, blockDim>>>(d_agent_scores, d_iBest);
+	
+}
+
+
 // run on the GPU, storing results in the RESULTS array provided
 void run_GPU(AGENT_DATA *agGPU, RESULTS *rGPU)
 {
@@ -1378,8 +1464,9 @@ void run_GPU(AGENT_DATA *agGPU, RESULTS *rGPU)
 	// allocate memory on device to hold results
 	float *d_results = device_allocf(_p.agents * _p.num_tests);
 	
-	// allocate memoery on device to hold temporary wins
+	// allocate memory on device to hold temporary wins and temporary agent scores
 	float *d_wins = device_allocf(_p.agents * _p.agents);
+	float *d_agent_scores = device_allocf(_p.agents);
 
 	// calculate block and grid sizes for kernels	
 	// basic arrangement has one thread for each agent in each trial
@@ -1430,7 +1517,7 @@ void run_GPU(AGENT_DATA *agGPU, RESULTS *rGPU)
 	for (int i = 0; i < _p.num_chunks; i++) {
 		timing_feedback_dot(i);
 		
-		unsigned isRestart = ((i > 0) && 0 == (i % _p.chunks_per_restart));
+		unsigned isRestart = ((i > 0) && (0 == (i % _p.chunks_per_restart) || 0 == (i % _p.chunks_per_test)));
 		if (isRestart) {
 			// reset gradients (state will be randomized in the learning kernel)
 			CUDA_EVENT_START;
@@ -1455,21 +1542,23 @@ void run_GPU(AGENT_DATA *agGPU, RESULTS *rGPU)
 //			test_kernel<<<gridDim, blockDim>>>(d_results + ((i+1) / _p.chunks_per_test) * _p.agents);
 
 //			printf("test_kernel2... (grid is (%d x %d) block is (%d x %d), index is %d\n", testGridDim.x, testGridDim.y, testBlockDim.x, testBlockDim.y, ((i+1) / _p.chunks_per_test));
+
+			// test_kernel2 calculates a fitness value and stores it in each agent
 			test_kernel2<<<test2GridDim, test2BlockDim>>>(d_results + ((i+1) / _p.chunks_per_test) * _p.agents);
 			
-			if (i+1 == _p.num_chunks) test_kernel3<<<test3GridDim, test3BlockDim>>>(d_wins);
+			test_kernel3<<<test3GridDim, test3BlockDim>>>(d_wins);
+//			device_dumpf("round-robin results", d_wins, _p.agents, _p.agents);
+//			dump_agentsGPU("after testing, before sharing", agGPU);
+			share_best(d_wins, d_agent_scores);
+//			dump_agentsGPU("after sharing", agGPU);
+
 			CUDA_EVENT_STOP(timeTest);
 			CUT_CHECK_ERROR("test_kernel execution failed");
-//			device_dumpf("test results, after test_kernel", d_results, _p.num_tests, _p.agents);
 		}
 		
-//		dump_agentsGPU("after testing", agGPU);
-		
-		// sharing will go here
 	}
 	printf("\n");
 	
-	device_dumpf("round-robin results", d_wins, _p.agents, _p.agents);
 	
 	// reduce the result array on the device and copy back to host
 	CUDA_EVENT_START;
