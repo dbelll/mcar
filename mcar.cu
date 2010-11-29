@@ -1117,6 +1117,92 @@ __global__ void reset_gradient_kernel()
 }
 
 
+// take the number of wins for each agent and convert to a fitness value and store in results
+// thread number if the number for the opponent
+// wins has the number of wins for each agent with stride against each other agent (dc_p.agents x dc_p.agents)
+// results and array of size dc_p.agents where the results for this test go with stride 1
+//__global__ void update_fitness_kernel1(float *wins, float *results)
+//{
+//	unsigned idx = threadIdx.x;
+//	
+//	
+//}
+
+/*
+	threads per block = the number of competitions between each agent pair
+	blocks are in a square grid with the number of agents per group on each side
+	Agents compete for test_reps and the score is stored in the results array in the
+	row for agent a1, column for agent a2.
+*/
+__global__ void test_kernel3(float *wins)
+{
+	unsigned ag1 = blockIdx.x;
+	unsigned ag2 = blockIdx.y;
+	if (ag1 == ag2){ wins[ag1*dc_p.agents + ag2] = 0; return;}
+	unsigned idx = threadIdx.x;
+	
+	__shared__ unsigned s_seeds[4*BLOCK_SIZE];
+	__shared__ float s_s1[2*BLOCK_SIZE];
+	__shared__ float s_s2[2*BLOCK_SIZE];
+	__shared__ float s_wins[BLOCK_SIZE];
+	
+	// copy seeds from ag1 to seeds[0] and [2] and from ag2 to seeds[1] and seeds[3]
+	// adding in the idx value so each competition has different seeds
+	// s_results will have +1 for ag1 wins and -1 for ag2 wins and 0 for ties
+	s_seeds[idx] = dc_ag.seeds[ag1] + idx;
+	s_seeds[idx + BLOCK_SIZE] = dc_ag.seeds[ag2 + dc_p.agents] + idx;
+	s_seeds[idx + 2*BLOCK_SIZE] = dc_ag.seeds[ag1 + 2*dc_p.agents] + idx;
+	s_seeds[idx + 3*BLOCK_SIZE] = dc_ag.seeds[ag2 + 3*dc_p.agents] + idx;
+	s_wins[idx] = 0.0f;		// this is the number of wins for ag1
+	
+	// randomize the state for ag1 and copy the same state for ag2
+	randomize_state(s_s1 + idx, s_seeds + idx, BLOCK_SIZE);
+	s_s2[idx] = s_s1[idx];
+	s_s2[idx + BLOCK_SIZE] = s_s1[idx + BLOCK_SIZE];
+	
+	unsigned action1, action2;
+	if (idx < dc_p.test_reps) {
+		int done1 = 0;
+		int done2 = 0;
+		for (int t = 0; t < dc_p.test_max; t++) {
+			if (!done1) {
+				best_action2(s_s1 + idx, &action1, dc_ag.theta + ag1, dc_p.agents, dc_p.hidden_nodes, NULL);
+				take_action(s_s1 + idx, action1, s_s1 + idx, BLOCK_SIZE, dc_accel);
+				if (terminal_state(s_s1 + idx)) {
+					done1 = t+1;
+				}
+			}
+			if (!done2) {
+				best_action2(s_s2 + idx, &action2, dc_ag.theta + ag2, dc_p.agents, dc_p.hidden_nodes, NULL);
+				take_action(s_s2 + idx, action2, s_s2 + idx, BLOCK_SIZE, dc_accel);
+				if (terminal_state(s_s2 + idx)) done2 = 1 + t;
+			}
+			if (done1 && done2) break;
+		}
+		if (!done1) done1 = dc_p.test_max+1;
+		if (!done2) done2 = dc_p.test_max+1;
+		
+		s_wins[idx] += (done2 - done1) / 1000.0f;
+	}
+	
+	__syncthreads();
+	
+	// do a reduction on the results
+	unsigned half = BLOCK_SIZE / 2;
+	while (half > 0) {
+		if (idx < half && idx + half < dc_p.test_reps) {
+			s_wins[idx] += s_wins[idx + half];
+		}
+		half /= 2;
+		__syncthreads();
+	}
+	
+	// copy the wins to global memory
+	if (idx == 0) {
+		wins[ag1 * dc_p.agents + ag2] = s_wins[0];
+	}
+}
+
 /*
 	threads per block = number of test reps
 	number of blocks = total number of agents (agents_per_group * trials)
@@ -1261,12 +1347,13 @@ __global__ void learn_kernel(unsigned steps, unsigned isRestart)
 		float reward = take_action(s_s + idx, s_action[idx], s_s + idx, BLOCK_SIZE, dc_accel);
 		unsigned success = terminal_state(s_s + idx);
 		
-		if (success) {
-			randomize_state(s_s + idx, s_seeds + idx, BLOCK_SIZE);
-		}
+		if (success) randomize_state(s_s + idx, s_seeds + idx, BLOCK_SIZE);
 		float Q_next = choose_action2(s_s + idx, s_action + idx, dc_ag.theta + iGlobal, dc_p.epsilon, dc_p.agents, dc_p.hidden_nodes, dc_ag.activation + iGlobal, s_seeds + idx);
+//		if (success) Q_next = 0.0f;
 		float error = reward + dc_p.gamma * Q_next - Q_curr;
-		update_thetas(NULL, dc_ag.theta + iGlobal, dc_ag.W + iGlobal, dc_p.alpha, error, dc_p.agents, dc_p.hidden_nodes, dc_ag.activation + iGlobal);
+		float _alpha = dc_p.alpha;
+//		if (success) _alpha = 1.0f;
+		update_thetas(NULL, dc_ag.theta + iGlobal, dc_ag.W + iGlobal, _alpha, error, dc_p.agents, dc_p.hidden_nodes, dc_ag.activation + iGlobal);
 		if (success) reset_gradient(dc_ag.W + iGlobal, dc_p.agents, dc_p.num_wgts);
 	}
 	
@@ -1290,6 +1377,9 @@ void run_GPU(AGENT_DATA *agGPU, RESULTS *rGPU)
 	
 	// allocate memory on device to hold results
 	float *d_results = device_allocf(_p.agents * _p.num_tests);
+	
+	// allocate memoery on device to hold temporary wins
+	float *d_wins = device_allocf(_p.agents * _p.agents);
 
 	// calculate block and grid sizes for kernels	
 	// basic arrangement has one thread for each agent in each trial
@@ -1303,12 +1393,19 @@ void run_GPU(AGENT_DATA *agGPU, RESULTS *rGPU)
 	
 	// The grid y dimension is multiplied by the number of test reps
 	if (_p.test_reps > BLOCK_SIZE) printf("***** too many test_reps (%d reps greater than blocksize=%d) *****\n", _p.test_reps, BLOCK_SIZE);
-	dim3 testBlockDim(_p.test_reps);
-	dim3 testGridDim(_p.agents);
-	if (testGridDim.x > 65535) {
-		testGridDim.y = 1 + (testGridDim.x-1) / 65535;
-		testGridDim.x = 1 + (testGridDim.x-1) / testGridDim.y;
+	dim3 test2BlockDim(_p.test_reps);
+	dim3 test2GridDim(_p.agents);
+	if (test2GridDim.x > 65535) {
+		test2GridDim.y = 1 + (test2GridDim.x-1) / 65535;
+		test2GridDim.x = 1 + (test2GridDim.x-1) / test2GridDim.y;
 	}
+	
+	dim3 test3BlockDim(_p.test_reps);
+	if (_p.agents > 65535) printf("***** too many agents for round-robin compition *****");
+	dim3 test3GridDim(_p.agents, _p.agents);
+	
+	dim3 updateFitnessBlockDim(_p.agents);
+	dim3 updateFitnessGridDim(_p.agents);
 
 	// reset gradient kernel has total number of threads equal to the gradient values
 	dim3 resetGradientBlockDim(512);
@@ -1356,8 +1453,11 @@ void run_GPU(AGENT_DATA *agGPU, RESULTS *rGPU)
 //			printf("test_kernel... (grid is (%d x %d) block is (%d x %d), index is %d\n", gridDim.x, gridDim.y, blockDim.x, blockDim.y, ((i+1) / _p.chunks_per_test));
 //			device_dumpf("test results, prior to test_kernel", d_results, _p.num_tests, _p.agents);
 //			test_kernel<<<gridDim, blockDim>>>(d_results + ((i+1) / _p.chunks_per_test) * _p.agents);
+
 //			printf("test_kernel2... (grid is (%d x %d) block is (%d x %d), index is %d\n", testGridDim.x, testGridDim.y, testBlockDim.x, testBlockDim.y, ((i+1) / _p.chunks_per_test));
-			test_kernel2<<<testGridDim, testBlockDim>>>(d_results + ((i+1) / _p.chunks_per_test) * _p.agents);
+			test_kernel2<<<test2GridDim, test2BlockDim>>>(d_results + ((i+1) / _p.chunks_per_test) * _p.agents);
+			
+			if (i+1 == _p.num_chunks) test_kernel3<<<test3GridDim, test3BlockDim>>>(d_wins);
 			CUDA_EVENT_STOP(timeTest);
 			CUT_CHECK_ERROR("test_kernel execution failed");
 //			device_dumpf("test results, after test_kernel", d_results, _p.num_tests, _p.agents);
@@ -1368,6 +1468,8 @@ void run_GPU(AGENT_DATA *agGPU, RESULTS *rGPU)
 		// sharing will go here
 	}
 	printf("\n");
+	
+	device_dumpf("round-robin results", d_wins, _p.agents, _p.agents);
 	
 	// reduce the result array on the device and copy back to host
 	CUDA_EVENT_START;
@@ -1398,4 +1500,7 @@ void run_GPU(AGENT_DATA *agGPU, RESULTS *rGPU)
 #endif
 
 	if (d_results) cudaFree(d_results);
+	if (d_minval) cudaFree(d_minval);
+	if (d_mincol) cudaFree(d_mincol);
+	if (d_wins) cudaFree(d_wins);
 }
