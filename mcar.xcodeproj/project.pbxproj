@@ -37,10 +37,10 @@
 			children = (
 				104A964D1298080900DC5289 /* main.h */,
 				106FF80D119EE7F5000CD6C8 /* main.c */,
-				10294C5111A1A01400AAF551 /* mcar.h */,
-				10294C5011A1A01400AAF551 /* mcar.cu */,
 				10D25B6B12A54C2B004F4791 /* gpu_results.h */,
 				10D25B6C12A54C2B004F4791 /* gpu_results.cu */,
+				10294C5111A1A01400AAF551 /* mcar.h */,
+				10294C5011A1A01400AAF551 /* mcar.cu */,
 			);
 			name = source;
 			sourceTree = "<group>";

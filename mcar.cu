@@ -1563,6 +1563,7 @@ unsigned determine_new_best(AGENT_DATA *agGPU, unsigned *d_iWinner, unsigned *pB
 		}else {
 			// calc quality for information purposes
 			if (iWinner != iBest){
+				
 				calc_agent_quality(agGPU, iWinner, d_steps);
 				if (_p.dump_all_new_best) dump_one_agentGPU("new best agent", agGPU, iWinner);
 			}
@@ -1686,11 +1687,11 @@ void run_GPU(AGENT_DATA *agGPU)
 	
 	// set up timing values
 	CUDA_EVENT_PREPARE
-	float timeReset = 0.0f;
-	float timeLearn = 0.0f;
-	float timeTest = 0.0f;
+	float timeReset = 0.0f;	// reset the gradient
+	float timeLearn = 0.0f;	// learning kernel
+	float timeTest = 0.0f;	// competition
+	float timeShare = 0.0f;	// all the work for sharing results (except the competition)
 	float timeCalcFitness = 0.0f;
-	float timeShare = 0.0f;
 	unsigned timerGPU;
 	CREATE_TIMER(&timerGPU);
 	START_TIMER(timerGPU);
@@ -1726,7 +1727,7 @@ void run_GPU(AGENT_DATA *agGPU)
 
 				CUDA_EVENT_START
 				share_after_competition(i * _p.chunk_interval, agGPU, &iBest, d_wins, d_agent_scores, d_steps);
-				CUDA_EVENT_STOP2(timeShare, share_best);
+				CUDA_EVENT_STOP2(timeShare, share_after_competition);
 //				dump_agentsGPU("after sharing", agGPU);
 			}else if (_p.share_fitness) {
 				printf("********** not implemented ********");
@@ -1746,7 +1747,8 @@ void run_GPU(AGENT_DATA *agGPU)
 	PRINT_TIME(timeReset, "reset_gradient_kernel time");
 	PRINT_TIME(timeLearn, "learn time");
 	PRINT_TIME(timeTest, "test time");
-	PRINT_TIME(timeShare, "share_best time");
+	PRINT_TIME(timeShare, "share time");
+	PRINT_TIME(timeCalcFitness, "calc fitness time");
 
 #ifdef DUMP_FINAL_AGENTS
 	dump_agents_GPU("--------------------------------------\n       Ending Agent States\n", agGPU);
