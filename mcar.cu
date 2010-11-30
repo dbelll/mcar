@@ -647,7 +647,7 @@ void dump_agent(AGENT_DATA *ag, unsigned agent)
 			printf("        hidden%2d --> output   %9.6f %9.6f\n", h, ag->theta[i], ag->W[i]); i += _p.agents;
 		}
 	}
-	printf("fitness = %5.3f   alpha = %7.4f\n", ag->fitness[agent], ag->alpha[agent]);
+	printf("fitness = %5.3f   alpha = %7.4f\n", ag->fitness[agent]/NUM_TOT_DIV, ag->alpha[agent]);
 	printf("\nCurrent State: x = %9.6f  x' = %9.6f, stored action is %s\n", ag->s[agent], ag->s[agent + _p.agents], string_for_action(ag->action[agent]));
 
 	printf("        HIDDEN NODE    ACTIVATION\n");
@@ -922,34 +922,34 @@ void copy_theta(AGENT_DATA *ag, unsigned iFrom, unsigned iTo, unsigned num_wgts,
 }
 
 // share is where the best agents will be selected and duplicated
-void share(AGENT_DATA *ag, float share_best_pct, unsigned agent_group_size, unsigned num_agents, unsigned num_wgts)
-{
+//void share(AGENT_DATA *ag, float share_best_pct, unsigned agent_group_size, unsigned num_agents, unsigned num_wgts)
+//{
 //	printf("share...\n");
-	for (int group = 0; group < num_agents / agent_group_size; group++) {
-		unsigned iGroup = group * agent_group_size;
-		// determine the best agent in this group
-		unsigned iBest = 0;
-		float best_fitness = ag->fitness[iGroup];
-		for (int a = 1; a < agent_group_size; a++) {
-			if (ag->fitness[iGroup + a] < best_fitness) {
-				best_fitness = ag->fitness[iGroup + a];
-				iBest = a;
-			}
-		}
-
+//	for (int group = 0; group < num_agents / agent_group_size; group++) {
+//		unsigned iGroup = group * agent_group_size;
+//		// determine the best agent in this group
+//		unsigned iBest = 0;
+//		float best_fitness = ag->fitness[iGroup];
+//		for (int a = 1; a < agent_group_size; a++) {
+//			if (ag->fitness[iGroup + a] < best_fitness) {
+//				best_fitness = ag->fitness[iGroup + a];
+//				iBest = a;
+//			}
+//		}
+//
 //		printf("agent %d is the best in group %d\n", iGroup + iBest, group);
-		
-		// now copy the best agents to the others with probability share_best_pct
-		for (int a = 0; a < agent_group_size; a++) {
-			if (a == iBest) continue;
-			float r = RandUniform(ag->seeds + iGroup + a, num_agents);
-			if (r < share_best_pct) {
+//		
+//		// now copy the best agents to the others with probability share_best_pct
+//		for (int a = 0; a < agent_group_size; a++) {
+//			if (a == iBest) continue;
+//			float r = RandUniform(ag->seeds + iGroup + a, num_agents);
+//			if (r < share_best_pct) {
 //				printf("copy weights from agent %d to agent %d\n", iGroup + iBest, iGroup + a);
-				copy_theta(ag, iBest, iGroup + a, num_wgts, num_agents);
-			}
-		}
-	}
-}
+//				copy_theta(ag, iBest, iGroup + a, num_wgts, num_agents);
+//			}
+//		}
+//	}
+//}
 
 // test the agents and store the results in the iTest entry in the RESULTS arrays
 void run_test(AGENT_DATA *ag, RESULTS *r, unsigned iTest)
@@ -1199,16 +1199,18 @@ __global__ void reset_gradient_kernel()
 //}
 
 /*
+	Run a competition between agents, storing wins - losses in the d_wins array on the device.
+	
 	threads per block = the number of competitions between each agent pair
 	blocks are in a square grid with the number of agents per group on each side
 	Agents compete for test_reps and the score is stored in the results array in the
 	row for agent a1, column for agent a2.
 */
-__global__ void test_kernel3(float *wins)
+__global__ void test_kernel3(float *d_wins)
 {
 	unsigned ag1 = blockIdx.x;
 	unsigned ag2 = blockIdx.y;
-	if (ag1 == ag2){ wins[ag1*dc_p.agents + ag2] = 0; return;}
+	if (ag1 == ag2){ d_wins[ag1*dc_p.agents + ag2] = 0; return;}
 	unsigned idx = threadIdx.x;
 	
 	__shared__ unsigned s_seeds[4*BLOCK_SIZE];
@@ -1269,7 +1271,7 @@ __global__ void test_kernel3(float *wins)
 	
 	// copy the wins to global memory
 	if (idx == 0) {
-		wins[ag1 * dc_p.agents + ag2] = s_wins[0] / dc_p.test_reps;
+		d_wins[ag1 * dc_p.agents + ag2] = s_wins[0] / dc_p.test_reps;
 	}
 }
 
@@ -1442,7 +1444,7 @@ __global__ void learn_kernel(unsigned steps, unsigned isRestart)
 
 // total x dimension is the agent number
 // y dimension is used for copying the arrays
-__global__ void share_best_kernel(float *d_agent_scores, unsigned *d_iBest)
+__global__ void share_best_kernel(float *d_agent_scores, unsigned iBest)
 {
 	unsigned idx = threadIdx.x + blockIdx.x * blockDim.x;
 	
@@ -1450,19 +1452,17 @@ __global__ void share_best_kernel(float *d_agent_scores, unsigned *d_iBest)
 
 	// if this is the best agent, set it's alpha to 0.0f to preserve
 	// otherwise reset the alpha
-	if (idx == *d_iBest) dc_ag.alpha[idx] = 0.0f;
+	if (idx == iBest) dc_ag.alpha[idx] = 0.0f;
 	else dc_ag.alpha[idx] = dc_p.alpha;
 
 	// do nothing if agent has a positive score
 	if (d_agent_scores[idx] >= 0.0f) return;
 	
-	unsigned i_best = *d_iBest;
-	
 	// with a probability share_best_pct, copy best agents weights to this agent
 	float r = RandUniform(dc_ag.seeds+idx, dc_p.agents);
 	if (r < dc_p.share_best_pct) {
 		for (int i = 0; i < dc_p.num_wgts; i++) {
-			dc_ag.theta[idx + i * dc_p.agents] = dc_ag.theta[i_best + i * dc_p.agents];
+			dc_ag.theta[idx + i * dc_p.agents] = dc_ag.theta[iBest + i * dc_p.agents];
 		}
 		dc_ag.alpha[idx] /= 2.0f;
 	}
@@ -1496,95 +1496,135 @@ __global__ void calc_quality_kernel(unsigned iBest, unsigned maxSteps, float *d_
 }
 
 /*
-	calculate the average quality of an agent by running it for specific starting positions
+	calculate the average quality of an agent by running it for specific starting positions spanning the state space
 */
-float calc_agent_quality(unsigned iBest)
+float calc_agent_quality(AGENT_DATA *agGPU, unsigned iBest, float *d_steps)
 {
-	// calculate the number of values for x and velocity
-	unsigned num_x = 1.5f  + (MAX_X - MIN_X) / DIV_X;
-	unsigned num_vel = 1.5f + (MAX_VEL - MIN_VEL) / DIV_VEL;
-	unsigned num_tot = num_x * num_vel;
+//	// calculate the number of values for x and velocity
+//	unsigned num_x = 1.5f  + (MAX_X - MIN_X) / DIV_X;
+//	unsigned num_vel = 1.5f + (MAX_VEL - MIN_VEL) / DIV_VEL;
+//	unsigned num_tot = num_x * num_vel;
 	
 //	printf("calc_agent_quality for best agent #%d\n   using %d x values, %d veloicty values, total of %d values\n", iBest, num_x, num_vel, num_tot);
 	
-	dim3 blockDim(num_x);
-	dim3 gridDim(num_vel);
+	dim3 blockDim(NUM_X_DIV);
+	dim3 gridDim(NUM_VEL_DIV);
 	
 	// allocate a location to store the number of steps for every trial
-	float *d_steps = device_allocf(num_tot);
+//	float *d_steps = device_allocf(num_tot);
 	
 //	printf("launching calc_quality_kernel with blocks of (%d x %d) and grid of (%d x %d)\n", blockDim.x, blockDim.y, gridDim.x, gridDim.y);
 	calc_quality_kernel<<<gridDim, blockDim>>>(iBest, MAX_STEPS_FOR_QUALITY, d_steps);
 	
 //	device_dumpf("steps for each x, velocity value", d_steps, num_vel, num_x);
 	
-	row_reduce(d_steps, num_tot, 1);
+	row_reduce(d_steps, NUM_TOT_DIV, 1);
 	float quality;
-	cudaMemcpy((void *)&quality, (void *)d_steps, sizeof(float), cudaMemcpyDeviceToHost);
-	
-	cudaFree(d_steps);
-	return quality / num_tot; 
+	CUDA_SAFE_CALL(cudaMemcpy(&quality, d_steps, sizeof(float), cudaMemcpyDeviceToHost));
+	CUDA_SAFE_CALL(cudaMemcpy(agGPU->fitness + iBest, d_steps, sizeof(float), cudaMemcpyDeviceToDevice));
+
+	printf("[calc_agent_quality] quality of %d is %7.2f\n", iBest, quality / NUM_TOT_DIV);
+	return quality; 
 }
 
 /*
-	dump information about the best agent and any other agents cloned from it
+	determine the new best agent based on the new winner, with a possible fitness comparison
+	returns 1 if the best agent is new and always sets the value of pBest to the reigning best agent
 */
-void dump_sharing_info(AGENT_DATA *agGPU, unsigned *d_iBest)
+unsigned determine_new_best(AGENT_DATA *agGPU, unsigned *d_iWinner, unsigned *pBest, float *d_steps)
 {
-	static int oldBest = -1;
-	unsigned *iBest = host_copyui(d_iBest, 1);
-	if (*iBest != oldBest) {
-		dump_one_agentGPU("New best agent", agGPU, *iBest);
-		oldBest = *iBest;
-		float avg = calc_agent_quality(*iBest);
-		printf("average quality is %10.3f\n", avg);
+	static int iBest = -1;		// will hold the current best agent
+	static float iBestQuality = BIG_FLOAT;	// has the fitness value of current best agent
+
+	unsigned iWinner;
+	CUDA_SAFE_CALL(cudaMemcpy(&iWinner, d_iWinner, sizeof(unsigned), cudaMemcpyDeviceToHost));
+	if (iWinner == iBest){
+		printf("best agent, %d, won the competition, nothing new here\n", iWinner);
+		*pBest = iBest;	// nothing new here
+	}else{
+		printf("%d won the competition!!!\n", iWinner);
+		if (_p.dump_all_winners) dump_one_agentGPU("competition winner", agGPU, iWinner);
+		
+		// The competition winner is different than the current best agent.
+		if (_p.share_fitness) {
+			// check fitness of winner and compare to fitness of best agent
+			float winnerQuality = calc_agent_quality(agGPU, iWinner, d_steps);
+			printf("quality of %d is %f\n", iWinner, winnerQuality);
+			if (winnerQuality >= iBestQuality){
+				printf("%d is not good enough to become the new best\n", iWinner);
+				*pBest = iBest;		// no change because winner has worse quality than current best
+			}else {
+				printf("%d is the new best!!! (replacing %d)\n", iWinner, iBest);
+				if (_p.dump_all_new_best) dump_one_agentGPU("new best agent", agGPU, iWinner);
+				*pBest = iWinner;	// the winner is better than the current best!!
+				iBestQuality = winnerQuality;		// save the information
+			}
+		}else {
+			// calc quality for information purposes
+			if (iWinner != iBest){
+				calc_agent_quality(agGPU, iWinner, d_steps);
+				if (_p.dump_all_new_best) dump_one_agentGPU("new best agent", agGPU, iWinner);
+			}
+			
+			// no fitness check, the winner automatically becomes the best
+			*pBest = iWinner;
+		}
 	}
+	unsigned newBestFlag = (iBest != *pBest);
+	iBest = *pBest;	// remember the best agent for next time
+	return newBestFlag;
 }
 
 /*
-	Share based on results of competition.
+	Reduce the results of the competition to determine the winner and record the information.
+	If the winner is not the current best agent then...
+		if _p.share_fitness is false, the competition winner becomes the best agent
+		if _p.share_fitness is true, calculate fitness of winner and if better than current best agent, the winner becomes the new best agent.
+	
+	If the best agent is different, or the _p.always_share flag is set, then only copy best agent over the losers, using probability _p.share_best_pct
+	
 	d_wins is an (_p.agents x _p.agents) array on the device with the results of the round-robin
 	d_agent_scores will be filled in with the net score for each agent
+	d_steps is a temporary working area on device for use by calc_quality
 
 	Strategy:	All agents with a non-negative row score will be preserved
-				agents with row score < zero will be copied from the following (or previous) agent
+				agents with row score < zero will be copied from the following best agent with probability _p.share_best_pct
 */
-void share_best(AGENT_DATA *agGPU, float *d_wins, float *d_agent_scores)
+void share_after_competition(AGENT_DATA *agGPU, unsigned *pBest, float *d_wins, float *d_agent_scores, float *d_steps)
 {
-//	device_dumpf("start of share_best\n   d_wins:", d_wins, _p.agents, _p.agents);
+	// Determine who won the competition
+
+	printf("sharing after competition... ");
 	
 	// first accumulate the column totals times -1
 	col_reduce_x_k(d_wins, d_agent_scores, _p.agents, _p.agents, -1.0f);
-//	device_dumpf("   d_agent_scores with column totals times -1:", d_agent_scores, 1, _p.agents);
 	
 	// next, calculate the row totals
 	row_reduce(d_wins, _p.agents, _p.agents);
-//	device_dumpf("   d_wins after row reduction:", d_wins, _p.agents, _p.agents);
 	
 	// add row totals to the column totals in d_agent_scores
 	vsum(d_agent_scores, d_wins, _p.agents, _p.agents);
-//	device_dumpf("   d_agent_scores after adding in row totals:", d_agent_scores, 1, _p.agents);
-	
-	
-	float *d_bestVal;
-	unsigned *d_iBest;
-//	printf(" about to call row_argmax to determine best agent\n");
-	row_argmax(d_agent_scores, _p.agents, 1, &d_bestVal, &d_iBest);
 
-	static unsigned firstTime = 1;
-	static dim3 blockDim(BLOCK_SIZE);
-	static dim3 gridDim;
-	if (firstTime) {
-		gridDim.x = 1 + (blockDim.x-1)/_p.agents;
-		firstTime = 0;
+	float *d_winnerVal;
+	unsigned *d_iWinner;
+	row_argmax(d_agent_scores, _p.agents, 1, &d_winnerVal, &d_iWinner);
+	
+	// d_iWinner now contains the agent that won the competition
+	// Determine if there is a new best agent, and record the best agent (whoever it is) in iBest
+	unsigned newBestFlag = determine_new_best(agGPU, d_iWinner, pBest, d_steps);
+
+	// if there is a new best agent, or if SHARE_ALWAYS is on, then share the 
+	if (newBestFlag || _p.share_always) {
+		printf("%d is the new best agent\n", *pBest);
+		dim3 blockDim(BLOCK_SIZE);
+		dim3 gridDim(1 + (_p.agents-1)/BLOCK_SIZE);
+		share_best_kernel<<<gridDim, blockDim>>>(d_agent_scores, *pBest);
 	}
-	
-	share_best_kernel<<<gridDim, blockDim>>>(d_agent_scores, d_iBest);
 
-	dump_sharing_info(agGPU, d_iBest);
-	
+	cudaFree(d_winnerVal);
 }
 
+unsigned iBest;	// will hold the best agent value
 
 // run on the GPU, storing results in the RESULTS array provided
 void run_GPU(AGENT_DATA *agGPU, RESULTS *rGPU)
@@ -1596,6 +1636,9 @@ void run_GPU(AGENT_DATA *agGPU, RESULTS *rGPU)
 	
 	// allocate memory on device to hold results
 	float *d_results = device_allocf(_p.agents * _p.num_tests);
+	
+	// allocate a temporary area on device to hold the steps array for the quality calculation
+	float *d_steps = device_allocf(0.5f + (MAX_X - MIN_X)/DIV_X * (MAX_VEL - MIN_VEL)/DIV_VEL);
 	
 	// allocate memory on device to hold temporary wins and temporary agent scores
 	float *d_wins = device_allocf(_p.agents * _p.agents);
@@ -1621,7 +1664,7 @@ void run_GPU(AGENT_DATA *agGPU, RESULTS *rGPU)
 	}
 	
 	dim3 test3BlockDim(_p.test_reps);
-	if (_p.agents > 65535) printf("***** too many agents for round-robin compition *****");
+	if (_p.agents > 65535) printf("***** too many agents for round-robin competition *****");
 	dim3 test3GridDim(_p.agents, _p.agents);
 	
 	dim3 updateFitnessBlockDim(_p.agents);
@@ -1640,7 +1683,8 @@ void run_GPU(AGENT_DATA *agGPU, RESULTS *rGPU)
 	float timeReset = 0.0f;
 	float timeLearn = 0.0f;
 	float timeTest = 0.0f;
-	float timeReduce = 0.0f;
+	float timeCalcFitness = 0.0f;
+	float timeShare = 0.0f;
 	unsigned timerGPU;
 	CREATE_TIMER(&timerGPU);
 	START_TIMER(timerGPU);
@@ -1650,78 +1694,61 @@ void run_GPU(AGENT_DATA *agGPU, RESULTS *rGPU)
 	for (int i = 0; i < _p.num_chunks; i++) {
 		timing_feedback_dot(i);
 		
+		// restart at restart interval and always if just completed a test
 		unsigned isRestart = ((i > 0) && (0 == (i % _p.chunks_per_restart) || 0 == (i % _p.chunks_per_test)));
 		if (isRestart) {
 			// reset gradients (state will be randomized in the learning kernel)
 			CUDA_EVENT_START;
 			reset_gradient_kernel<<<resetGradientGridDim, resetGradientBlockDim>>>();
-			CUDA_EVENT_STOP(timeReset);
-			CUT_CHECK_ERROR("reset_gradient_kernel execution failed");
+			CUDA_EVENT_STOP2(timeReset, reset_gradient_kernel);
 		}
 		
 		// do some learning
 		CUDA_EVENT_START;
 		learn_kernel<<<gridDim, blockDim>>>(_p.chunk_interval, isRestart);
-		CUDA_EVENT_STOP(timeLearn);
-		CUT_CHECK_ERROR("learn_kernel execution failed");
-		
+		CUDA_EVENT_STOP2(timeLearn, learn_kernel);		
 //		dump_agentsGPU("after learning session", agGPU);
 		
-		// run tests (pre-sharing)
+		// run tests and sharing
 		if (0 == ((i+1) % _p.chunks_per_test)) {
-			CUDA_EVENT_START;
-//			printf("test_kernel... (grid is (%d x %d) block is (%d x %d), index is %d\n", gridDim.x, gridDim.y, blockDim.x, blockDim.y, ((i+1) / _p.chunks_per_test));
-//			device_dumpf("test results, prior to test_kernel", d_results, _p.num_tests, _p.agents);
-//			test_kernel<<<gridDim, blockDim>>>(d_results + ((i+1) / _p.chunks_per_test) * _p.agents);
+			if (_p.share_compete) {
+				printf("running competition...");
+				CUDA_EVENT_START;
+				test_kernel3<<<test3GridDim, test3BlockDim>>>(d_wins);
+				CUDA_EVENT_STOP2(timeTest, test_kernel3);
+//				dump_agentsGPU("after testing, before sharing", agGPU);
 
-//			printf("test_kernel2... (grid is (%d x %d) block is (%d x %d), index is %d\n", testGridDim.x, testGridDim.y, testBlockDim.x, testBlockDim.y, ((i+1) / _p.chunks_per_test));
-
-			// test_kernel2 calculates a fitness value and stores it in each agent
-			test_kernel2<<<test2GridDim, test2BlockDim>>>(d_results + ((i+1) / _p.chunks_per_test) * _p.agents);
+				CUDA_EVENT_START
+				share_after_competition(agGPU, &iBest, d_wins, d_agent_scores, d_steps);
+				CUDA_EVENT_STOP2(timeShare, share_best);
+//				dump_agentsGPU("after sharing", agGPU);
+			}else if (_p.share_fitness) {
+				printf("********** not implemented ********");
+				CUDA_EVENT_START
+//				calc_fitness(agGPU, d_wins, d_agent_scores, d_steps);
+				CUDA_EVENT_STOP2(timeCalcFitness, share_best_kernel);
+//				dump_agentsGPU("after sharing", agGPU);
+			}
 			
-			test_kernel3<<<test3GridDim, test3BlockDim>>>(d_wins);
-//			dump_agentsGPU("after testing, before sharing", agGPU);
-			share_best(agGPU, d_wins, d_agent_scores);
-//			dump_agentsGPU("after sharing", agGPU);
-
-			CUDA_EVENT_STOP(timeTest);
-			CUT_CHECK_ERROR("test_kernel execution failed");
 		}
 		
 	}
 	printf("\n");
 	
-	
-	// reduce the result array on the device and copy back to host
-	CUDA_EVENT_START;
-	float *d_minval;
-	unsigned *d_mincol;
-//	device_dumpf("test results, prior to reduction", d_results, _p.num_tests, _p.agents);
-	unsigned min_stride = row_argmin(d_results, _p.agents, _p.num_tests, &d_minval, &d_mincol);
-//	printf("min_stride = %d\n", min_stride);
-//	device_dumpf("d_minval", d_minval, _p.num_tests, 1 + (_p.agents - 1)/(2*BLOCK_SIZE));
-//	device_dumpui("d_minval", d_mincol, _p.num_tests, 1 + (_p.agents - 1)/(2*BLOCK_SIZE));
-	row_reduce(d_results, _p.agents, _p.num_tests);
-	for (int i = 0; i < _p.num_tests; i++) {
-		CUDA_SAFE_CALL(cudaMemcpy(rGPU->avg_fitness + i, d_results + i * _p.agents, sizeof(float), cudaMemcpyDeviceToHost));
-		CUDA_SAFE_CALL(cudaMemcpy(rGPU->best_fitness + i, d_minval + i * min_stride, sizeof(float), cudaMemcpyDeviceToHost));
-		CUDA_SAFE_CALL(cudaMemcpy(rGPU->best_agent + i, d_mincol + i * min_stride, sizeof(unsigned), cudaMemcpyDeviceToHost));
-		rGPU->avg_fitness[i] /= _p.agents;
-	}
-	CUDA_EVENT_STOP(timeReduce);
 	CUDA_EVENT_CLEANUP;
 	STOP_TIMER(timerGPU, "total GPU time");
 	PRINT_TIME(timeReset, "reset_gradient_kernel time");
-	PRINT_TIME(timeLearn, "learn_kernel time");
-	PRINT_TIME(timeTest, "test_kernel time");
-	PRINT_TIME(timeReduce, "reduce_kernel time");
+	PRINT_TIME(timeLearn, "learn time");
+	PRINT_TIME(timeTest, "test time");
+	PRINT_TIME(timeShare, "share_best time");
 
-#ifdef DUMP_TERMINAL_AGENT_STATE
+#ifdef DUMP_FINAL_AGENTS
 	dump_agents_GPU("--------------------------------------\n       Ending Agent States\n", agGPU);
 #endif
+	if (_p.dump_best) dump_one_agentGPU("Best Agent on GPU:", agGPU, iBest);
 
 	if (d_results) cudaFree(d_results);
-	if (d_minval) cudaFree(d_minval);
-	if (d_mincol) cudaFree(d_mincol);
 	if (d_wins) cudaFree(d_wins);
+	if (d_agent_scores) cudaFree(d_agent_scores);
+	if (d_steps) cudaFree(d_steps);
 }

@@ -116,4 +116,6 @@ void PRINT_TIME(float time, char *message);
 #define CUDA_EVENT_CLEANUP	cudaEventDestroy(__start);	\
 							cudaEventDestroy(__stop);
 
+#define CUDA_EVENT_STOP2(t, str)	CUDA_EVENT_STOP(t);		\
+									CUT_CHECK_ERROR(#str" ececution failed!");
 #endif

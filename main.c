@@ -24,8 +24,11 @@ void display_help()
 	printf("  --TIME_STEPS          total number of time steps for each trial\n");
 	printf("  --AGENT_GROUP_SIZE    size of agent groups that will communicate\n");
 	
-	printf("  --SHARING_INTERVAL    number of time steps between agent communication\n");
+//	printf("  --SHARING_INTERVAL    number of time steps between agent communication\n");
 	printf("  --SHARE_BEST_PCT		the probability of being replace by the best agent when sharing\n");
+	printf("  --SHARE_COMPETE		flag to indicate that competition is used for sharing\n");
+	printf("  --SHARE_FITNESS		flag to indicate that fitness is used for sharing\n");
+	printf("  --SHARE_ALWAYS		always share best agent with losers\n");
 	
 	printf("  --ALPHA               float value for alpha, the learning rate parameter\n");
 	printf("  --EPSILON             float value for epsilon, the exploration parameter\n");
@@ -60,24 +63,27 @@ PARAMS read_params(int argc, const char **argv)
 	PARAMS p;
 	if (argc == 1 || PARAM_PRESENT("HELP")) { display_help(); exit(1); }
 	
-	p.trials = GET_PARAM("TRIALS", 1024);
+	p.trials = GET_PARAM("TRIALS", 1);
 	p.time_steps = GET_PARAM("TIME_STEPS", 64);
 	p.agent_group_size = GET_PARAM("AGENT_GROUP_SIZE", 1);
 	p.agents = p.trials * p.agent_group_size;
-	p.sharing_interval = GET_PARAM("SHARING_INTERVAL", p.time_steps);
+//	p.sharing_interval = GET_PARAM("SHARING_INTERVAL", p.time_steps);
 	p.share_best_pct = GET_PARAMF("SHARE_BEST_PCT", DEFAULT_SHARE_BEST_PCT);
+	p.share_compete = PARAM_PRESENT("SHARE_COMPETE");
+	p.share_fitness = PARAM_PRESENT("SHARE_FITNESS");
+	p.share_always = PARAM_PRESENT("SHARE_ALWAYS");
 	
-	// set sharing interval to total time steps if only one agent, or if it exceeds the time steps
-	if (p.agents == 1) p.sharing_interval = p.time_steps;
-	if (p.sharing_interval > p.time_steps) p.sharing_interval = p.time_steps;
+//	// set sharing interval to total time steps if only one agent, or if it exceeds the time steps
+//	if (p.agents == 1) p.sharing_interval = p.time_steps;
+//	if (p.sharing_interval > p.time_steps) p.sharing_interval = p.time_steps;
 	
-	// Total time steps must be an integer number of sharing intervals
-	if (p.agent_group_size > 1 && 0 != (p.time_steps % p.sharing_interval)){
-		printf("Inconsistent arguments: TIME_STEPS=%d, SHARING_INTERVAL=%d\n", 
-			   p.time_steps, p.sharing_interval);
-		exit(1);
-	}
-	p.num_sharing_intervals = p.time_steps / p.sharing_interval;
+//	// Total time steps must be an integer number of sharing intervals
+//	if (p.agent_group_size > 1 && 0 != (p.time_steps % p.sharing_interval)){
+//		printf("Inconsistent arguments: TIME_STEPS=%d, SHARING_INTERVAL=%d\n", 
+//			   p.time_steps, p.sharing_interval);
+//		exit(1);
+//	}
+//	p.num_sharing_intervals = p.time_steps / p.sharing_interval;
 	
 	p.initial_theta_min = GET_PARAMF("INIT_THETA_MIN", 0.0f);
 	p.initial_theta_max = GET_PARAMF("INIT_THETA_MAX", 1.0f);
@@ -94,9 +100,11 @@ PARAMS read_params(int argc, const char **argv)
 	}
 	p.num_wgts = NUM_ACTIONS * ((1 + STATE_SIZE) * p.hidden_nodes + (1 + p.hidden_nodes));
 	
-	p.run_on_CPU = GET_PARAM("RUN_ON_CPU", 1);
+	p.run_on_CPU = GET_PARAM("RUN_ON_CPU", 0);
 	p.run_on_GPU = GET_PARAM("RUN_ON_GPU", 1);
 	p.no_print = PARAM_PRESENT("NO_PRINT");
+	p.dump_all_winners = PARAM_PRESENT("DUMP_ALL_WINNERS");
+	p.dump_all_new_best = PARAM_PRESENT("DUMP_ALL_NEW_BEST");
 	p.dump_best = PARAM_PRESENT("DUMP_BEST");
 	
 	p.test_interval = GET_PARAM("TEST_INTERVAL", p.time_steps);
@@ -109,14 +117,13 @@ PARAMS read_params(int argc, const char **argv)
 	
 	// calculate chunk_interval as smallest of other intervals, or 
 	p.chunk_interval = p.test_interval;
-	if(p.chunk_interval > p.sharing_interval) p.chunk_interval = p.sharing_interval;
+//	if(p.chunk_interval > p.sharing_interval) p.chunk_interval = p.sharing_interval;
 	if(p.chunk_interval > p.restart_interval) p.chunk_interval = p.restart_interval;
 	
 
 	// use value from command line if present (for testing purposes)
 	p.chunk_interval = GET_PARAM("CHUNK_INTERVAL", p.chunk_interval);
-	if (p.chunk_interval > p.test_interval ||
-		p.chunk_interval > p.sharing_interval) {
+	if (p.chunk_interval > p.test_interval) {
 		printf("Inconsistent arguments: CHUNK_INTERVAL = %d but must be <= all other intervals and evenly divide them.\n",
 			   p.chunk_interval);
 		exit(1);
@@ -137,12 +144,12 @@ PARAMS read_params(int argc, const char **argv)
 		exit(1);
 	}
 	
-	// sharing interval must be a positive integer times the chunk interval
-	if (p.chunk_interval > p.sharing_interval || 0 != (p.sharing_interval % p.chunk_interval)) {
-		printf("Inconsistent arguments: SHARING_INTERVAL=%d, but time chunks are calculated as %d\n", 
-			   p.sharing_interval, p.chunk_interval);
-		exit(1);
-	}
+//	// sharing interval must be a positive integer times the chunk interval
+//	if (p.chunk_interval > p.sharing_interval || 0 != (p.sharing_interval % p.chunk_interval)) {
+//		printf("Inconsistent arguments: SHARING_INTERVAL=%d, but time chunks are calculated as %d\n", 
+//			   p.sharing_interval, p.chunk_interval);
+//		exit(1);
+//	}
 	
 	// restart interval must be a positive integer times the chunk interval
 	if (p.chunk_interval > p.restart_interval || 0 != (p.restart_interval % p.chunk_interval)) {
@@ -152,15 +159,20 @@ PARAMS read_params(int argc, const char **argv)
 	}
 	
 	p.chunks_per_test = p.test_interval / p.chunk_interval;
-	p.chunks_per_share = p.sharing_interval / p.chunk_interval;
+//	p.chunks_per_share = p.sharing_interval / p.chunk_interval;
 	p.chunks_per_restart = p.restart_interval / p.chunk_interval;
 		
 	p.state_size = STATE_SIZE;		// x and x'
 	p.num_actions = NUM_ACTIONS;	// left, none, and right
 	
-	printf("[MCAR][HIDDEN_NODES%3d[TRIALS%7d][TIME_STEPS%7d][SHARING_INTERVAL%7d][SHARE_BEST_PCT%7.4f][AGENT_GROUP_SIZE%7d][ALPHA%7.4f]"
-		   "[EPSILON%7.4f][GAMMA%7.4f][LAMBDA%7.4f][TEST_INTERVAL%7d][TEST_REPS%7d][TEST_MAX%7d][RESTART_INTERVAL%7d][CHUNK_INTERVAL%7d]\n", p.hidden_nodes, p.trials, p.time_steps, p.sharing_interval, p.share_best_pct, p.agent_group_size, p.alpha, p.epsilon, p.gamma, p.lambda, p.test_interval, p.test_reps, p.test_max, p.restart_interval, p.chunk_interval);
+	printf("[MCAR][HIDDEN_NODES%3d[TRIALS%7d][TIME_STEPS%7d][SHARE_BEST_PCT%7.4f][AGENT_GROUP_SIZE%7d][ALPHA%7.4f]"
+		   "[EPSILON%7.4f][GAMMA%7.4f][LAMBDA%7.4f][TEST_INTERVAL%7d][TEST_REPS%7d][TEST_MAX%7d][RESTART_INTERVAL%7d][CHUNK_INTERVAL%7d]", p.hidden_nodes, p.trials, p.time_steps, p.share_best_pct, p.agent_group_size, p.alpha, p.epsilon, p.gamma, p.lambda, p.test_interval, p.test_reps, p.test_max, p.restart_interval, p.chunk_interval);
 
+	if (p.share_compete) printf("[SHARE_COMPETE]");
+	if (p.share_fitness) printf("[SHARE_FITNESS]");
+	if (p.share_always) printf("[SHARE_ALWAYS]");
+	printf("\n");
+	
 	// aliases
 	p.stride = p.agents;
 	p.num_hidden = p.hidden_nodes;
@@ -199,9 +211,6 @@ int main(int argc, const char **argv)
 #ifdef DUMP_FINAL_AGENTS
 		dump_agentsGPU("Final agents on GPU", agGPU);
 #endif
-		if (p.dump_best){
-			dump_one_agentGPU("Best Agent on GPU:", agGPU, rGPU->best_agent[p.num_tests-1]);
-		}
 		free_agentsGPU(agGPU);
 	}
 	

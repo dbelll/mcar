@@ -22,6 +22,9 @@
 // parameters for calculating agent quality
 #define DIV_X 0.02
 #define DIV_VEL 0.002
+#define NUM_X_DIV ((unsigned)(1.5f  + (MAX_X - MIN_X) / DIV_X))
+#define NUM_VEL_DIV ((unsigned)(1.5f + (MAX_VEL - MIN_VEL) / DIV_VEL))
+#define NUM_TOT_DIV (NUM_X_DIV * NUM_VEL_DIV)
 #define MAX_STEPS_FOR_QUALITY 2000
 
 #define ACCEL_FACTOR 0.001f
@@ -60,8 +63,11 @@ typedef struct{
 	unsigned time_steps;		// number of time steps in one trial
 	unsigned agent_group_size;	// number of agents in a group that will work toward one solution
 	
-	unsigned sharing_interval;	// number of time steps agents work independently before sharing
+//	unsigned sharing_interval;	// number of time steps agents work independently before sharing
 	float share_best_pct;	// the probability of beling replaced by the best agent during sharing
+	unsigned share_compete;		// flag to indicate that competition is used for sharing
+	unsigned share_fitness;		// flag to indicate that fitness is used for sharing
+	unsigned share_always;		// flag indicates that the best agent is always shared with losers, even when it has not changed from the previous best agent.
 	
 	unsigned agents;			// total number of agents = agent_group_size * trials
 	unsigned num_sharing_intervals;	// number of sharing intervals = timp_steps / sharing_interval
@@ -77,6 +83,8 @@ typedef struct{
 	unsigned run_on_CPU;		// flag indicating to run on CPU
 	unsigned run_on_GPU;		// flag indicating to run on GPU
 	unsigned no_print;			// flag to suppress print-out
+	unsigned dump_all_winners;	// flag to print out all agents that win competition
+	unsigned dump_all_new_best;	// flag to print out all new best agents
 	unsigned dump_best;			// flag to print out the best agent at the end
 	
 	unsigned test_interval;		// number of time steps between testing
@@ -89,7 +97,7 @@ typedef struct{
 	unsigned chunk_interval;	// the number of time steps in the smallest value of
 								// sharing_interval, test_interval, restart_interval
 	unsigned num_chunks;		// calculated = time_steps / chunk_interval
-	unsigned chunks_per_share;	// calculated = sharing_interval / chunk_interval
+//	unsigned chunks_per_share;	// calculated = sharing_interval / chunk_interval
 	unsigned chunks_per_test;	// calculated = test_interval / chunk_interval
 	unsigned chunks_per_restart;	// calculated = restart_interval / chunk_interval
 	
