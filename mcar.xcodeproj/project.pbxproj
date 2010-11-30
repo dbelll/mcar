@@ -81,7 +81,15 @@
 				104A96F9129951C400DC5289 /* utils */,
 				10294D9B11A1B93300AAF551 /* source */,
 				10294D9C11A1B93D00AAF551 /* other */,
+				10D25C1B12A5A034004F4791 /* Products */,
 			);
+			sourceTree = "<group>";
+		};
+		10D25C1B12A5A034004F4791 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Products;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -131,6 +139,7 @@
 				German,
 			);
 			mainGroup = 106FF7E9119EE654000CD6C8;
+			productRefGroup = 10D25C1B12A5A034004F4791 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (

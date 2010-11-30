@@ -162,6 +162,7 @@ typedef struct{
 //	float *theta;		// copy of the theta values at that time  //**TODO implement later
 } GPU_RESULTS;			// records information when a new best agent is found.
 
+void set_seed(unsigned seed);
 void set_params(PARAMS p);
 void dump_agents(const char *str, AGENT_DATA *ag);
 void dump_agent_pointers(const char *str, AGENT_DATA *ag);
