@@ -22,7 +22,7 @@
 //#define BLOCK_SIZE 256
 #include "mcar.h"
 
-#define __DEBUG_REDUCTION__
+//#define __DEBUG_REDUCTION__
 
 #include <cuda.h>
 #include "cutil.h"

@@ -88,6 +88,10 @@ PARAMS read_params(int argc, const char **argv)
 	p.lambda = GET_PARAMF("LAMBDA", DEFAULT_LAMBDA);
 	
 	p.hidden_nodes = GET_PARAM("HIDDEN_NODES", DEFAULT_HIDDEN_NODES);
+	if (p.hidden_nodes > MAX_HIDDEN){
+		printf("Requested hidden nodes exceeds the maximum\n");
+		exit(1);
+	}
 	p.num_wgts = NUM_ACTIONS * ((1 + STATE_SIZE) * p.hidden_nodes + (1 + p.hidden_nodes));
 	
 	p.run_on_CPU = GET_PARAM("RUN_ON_CPU", 1);

@@ -19,6 +19,11 @@
 #define MIN_VEL -0.07f
 #define MAX_VEL 0.07f
 
+// parameters for calculating agent quality
+#define DIV_X 0.02
+#define DIV_VEL 0.002
+#define MAX_STEPS_FOR_QUALITY 2000
+
 #define ACCEL_FACTOR 0.001f
 
 // GRAVITY acceleration = GRAVITY_FACTOR * cos(GRAVITY_X_SCALE * x)
@@ -41,6 +46,8 @@
 #define STATE_SIZE 2
 #define NUM_ACTIONS 3
 #define SEEDS_PER_AGENT 4
+#define MAX_HIDDEN 6
+#define MAX_NUM_WGTS (NUM_ACTIONS * ((1 + STATE_SIZE) * MAX_HIDDEN + (1 + MAX_HIDDEN)))
 
 
 /*

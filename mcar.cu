@@ -182,6 +182,49 @@ DUAL_PREFIX float calc_Q2(float *s, unsigned a, float *theta, unsigned stride_th
 	return result;
 }
 
+// state and theta arrays have stride of 1
+DUAL_PREFIX float calc_Q3(float *s, unsigned a, float *theta, unsigned num_hidden, float *activation)
+{
+	// adjust theta to point to beginning of this action's weights
+	theta += iActionStart(a, 1, num_hidden);
+	
+	float result = 0.0f;
+	unsigned iOutputBias = offsetToOutputBias(1, num_hidden);
+	
+	// loop over each hidden node
+	for (int j = 0; j < num_hidden; j++) {
+		// iBias is the index into theta for the bias weight for the hidden node j
+		unsigned iBias = offsetToHiddenBias(j, 1, num_hidden);
+		
+		// first calculate contribution of the bias for this hidden node
+		float in = theta[iBias] * -1.0f;
+		
+		// next add in the contributions for the state input nodes
+		for (int k = 0; k < STATE_SIZE; k++) {
+			in += theta[iBias + (1+k)] * s[k*BLOCK_SIZE];
+		}
+		
+		// apply sigmoid and accumulate in the result
+		in = sigmoid(in); 
+		if (activation) activation[j] = in;
+		result += theta[iOutputBias + (1+j)] * in;
+
+#ifdef DEBUG_CALC_Q
+		printf("calc_Q for state (%9.4f, %9.4f) and action %d ... ", s[0], s[BLOCK_SIZE], a);
+//		printf("input to hidden node %d is %9.4f and activation is %9.4f\n", j, in, activation[j*stride]);
+#endif
+	}
+	
+	// add in the output bias contribution
+	result += theta[iOutputBias] * -1.0f;
+	
+#ifdef DEBUG_CALC_Q
+		printf("output activation is %9.4f\n", result);
+#endif
+	return result;
+}
+
+
 DUAL_PREFIX void reset_gradient(float *W, unsigned stride, unsigned num_wgts)
 {
 	for (int i = 0; i < num_wgts; i++) {
@@ -431,6 +474,22 @@ DUAL_PREFIX float best_action2(float *s, unsigned *pAction, float *theta, unsign
 	float bestQ = calc_Q2(s, 0, theta, stride_g, num_hidden, activation);
 	for (int k = 1; k < NUM_ACTIONS; k++) {
 		float tempQ = calc_Q2(s, k, theta, stride_g, num_hidden, activation);
+		if (tempQ > bestQ) {
+			bestQ = tempQ;
+			best_action = k;
+		}
+	}
+	*pAction = best_action;
+	return bestQ;
+}
+
+DUAL_PREFIX float best_action3(float *s, unsigned *pAction, float *theta, unsigned num_hidden, float *activation)
+{
+	// calculate Q value for each action
+	unsigned best_action = 0;
+	float bestQ = calc_Q3(s, 0, theta, num_hidden, activation);
+	for (int k = 1; k < NUM_ACTIONS; k++) {
+		float tempQ = calc_Q3(s, k, theta, num_hidden, activation);
 		if (tempQ > bestQ) {
 			bestQ = tempQ;
 			best_action = k;
@@ -1409,6 +1468,79 @@ __global__ void share_best_kernel(float *d_agent_scores, unsigned *d_iBest)
 	}
 }
 
+__global__ void calc_quality_kernel(unsigned iBest, unsigned maxSteps, float *d_steps)
+{
+	unsigned idx = threadIdx.x;
+	unsigned iGlobal = idx + blockIdx.x * blockDim.x;
+	
+	__shared__ float s_theta[BLOCK_SIZE];
+	__shared__ float s_s[2 * BLOCK_SIZE];
+	
+	// set up values in shared memory...
+	//    ... agent weights
+	if (idx < dc_p.num_wgts) s_theta[idx] = dc_ag.theta[iBest + idx * dc_p.agents];
+
+	//    ... state based on thread and block indexes
+	s_s[idx] = MIN_X + DIV_X * idx;
+	s_s[idx + BLOCK_SIZE] = MIN_VEL + DIV_VEL * blockIdx.x;
+
+	unsigned t;
+	unsigned action;
+	for (t = 0; t < maxSteps; t++) {
+		best_action3(s_s+idx, &action, s_theta, dc_p.hidden_nodes, NULL);
+		take_action(s_s+idx, action, s_s+idx, BLOCK_SIZE, dc_accel);
+		if (terminal_state(s_s+idx)) break;
+	}
+
+	d_steps[iGlobal] = (float)t;
+}
+
+/*
+	calculate the average quality of an agent by running it for specific starting positions
+*/
+float calc_agent_quality(unsigned iBest)
+{
+	// calculate the number of values for x and velocity
+	unsigned num_x = 1.5f  + (MAX_X - MIN_X) / DIV_X;
+	unsigned num_vel = 1.5f + (MAX_VEL - MIN_VEL) / DIV_VEL;
+	unsigned num_tot = num_x * num_vel;
+	
+//	printf("calc_agent_quality for best agent #%d\n   using %d x values, %d veloicty values, total of %d values\n", iBest, num_x, num_vel, num_tot);
+	
+	dim3 blockDim(num_x);
+	dim3 gridDim(num_vel);
+	
+	// allocate a location to store the number of steps for every trial
+	float *d_steps = device_allocf(num_tot);
+	
+//	printf("launching calc_quality_kernel with blocks of (%d x %d) and grid of (%d x %d)\n", blockDim.x, blockDim.y, gridDim.x, gridDim.y);
+	calc_quality_kernel<<<gridDim, blockDim>>>(iBest, MAX_STEPS_FOR_QUALITY, d_steps);
+	
+//	device_dumpf("steps for each x, velocity value", d_steps, num_vel, num_x);
+	
+	row_reduce(d_steps, num_tot, 1);
+	float quality;
+	cudaMemcpy((void *)&quality, (void *)d_steps, sizeof(float), cudaMemcpyDeviceToHost);
+	
+	cudaFree(d_steps);
+	return quality / num_tot; 
+}
+
+/*
+	dump information about the best agent and any other agents cloned from it
+*/
+void dump_sharing_info(AGENT_DATA *agGPU, unsigned *d_iBest)
+{
+	static int oldBest = -1;
+	unsigned *iBest = host_copyui(d_iBest, 1);
+	if (*iBest != oldBest) {
+		dump_one_agentGPU("New best agent", agGPU, *iBest);
+		oldBest = *iBest;
+		float avg = calc_agent_quality(*iBest);
+		printf("average quality is %10.3f\n", avg);
+	}
+}
+
 /*
 	Share based on results of competition.
 	d_wins is an (_p.agents x _p.agents) array on the device with the results of the round-robin
@@ -1417,9 +1549,9 @@ __global__ void share_best_kernel(float *d_agent_scores, unsigned *d_iBest)
 	Strategy:	All agents with a non-negative row score will be preserved
 				agents with row score < zero will be copied from the following (or previous) agent
 */
-void share_best(float *d_wins, float *d_agent_scores)
+void share_best(AGENT_DATA *agGPU, float *d_wins, float *d_agent_scores)
 {
-  //device_dumpf("start of share_best\n   d_wins:", d_wins, _p.agents, _p.agents);
+//	device_dumpf("start of share_best\n   d_wins:", d_wins, _p.agents, _p.agents);
 	
 	// first accumulate the column totals times -1
 	col_reduce_x_k(d_wins, d_agent_scores, _p.agents, _p.agents, -1.0f);
@@ -1431,7 +1563,7 @@ void share_best(float *d_wins, float *d_agent_scores)
 	
 	// add row totals to the column totals in d_agent_scores
 	vsum(d_agent_scores, d_wins, _p.agents, _p.agents);
-	//device_dumpf("   d_agent_scores after adding in row totals:", d_agent_scores, 1, _p.agents);
+//	device_dumpf("   d_agent_scores after adding in row totals:", d_agent_scores, 1, _p.agents);
 	
 	
 	float *d_bestVal;
@@ -1444,12 +1576,12 @@ void share_best(float *d_wins, float *d_agent_scores)
 	static dim3 gridDim;
 	if (firstTime) {
 		gridDim.x = 1 + (blockDim.x-1)/_p.agents;
-//		gridDim.y = _p.num_wgts;
-//		if (gridDim.y < 4) gridDim.y = 4;		// need at least 4 to copy the seeds
 		firstTime = 0;
 	}
 	
 	share_best_kernel<<<gridDim, blockDim>>>(d_agent_scores, d_iBest);
+
+	dump_sharing_info(agGPU, d_iBest);
 	
 }
 
@@ -1548,9 +1680,9 @@ void run_GPU(AGENT_DATA *agGPU, RESULTS *rGPU)
 			test_kernel2<<<test2GridDim, test2BlockDim>>>(d_results + ((i+1) / _p.chunks_per_test) * _p.agents);
 			
 			test_kernel3<<<test3GridDim, test3BlockDim>>>(d_wins);
-			//dump_agentsGPU("after testing, before sharing", agGPU);
-			share_best(d_wins, d_agent_scores);
-			//dump_agentsGPU("after sharing", agGPU);
+//			dump_agentsGPU("after testing, before sharing", agGPU);
+			share_best(agGPU, d_wins, d_agent_scores);
+//			dump_agentsGPU("after sharing", agGPU);
 
 			CUDA_EVENT_STOP(timeTest);
 			CUT_CHECK_ERROR("test_kernel execution failed");
