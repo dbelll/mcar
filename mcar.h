@@ -86,6 +86,7 @@ typedef struct{
 	unsigned dump_all_winners;	// flag to print out all agents that win competition
 	unsigned dump_all_new_best;	// flag to print out all new best agents
 	unsigned dump_best;			// flag to print out the best agent at the end
+	unsigned dump_updates;		// print update information when a new best agent is found
 	
 	unsigned test_interval;		// number of time steps between testing
 	unsigned test_reps;			// number of repitions of the test
@@ -154,6 +155,12 @@ typedef struct{
 	unsigned *best_agent;	// index of agent with best fitness value
 } RESULTS;
 
+typedef struct{
+	unsigned time_step;	// timestep of taking over as new
+	unsigned agent;		// agent number
+	float fitness;		// agent fitness
+//	float *theta;		// copy of the theta values at that time  //**TODO implement later
+} GPU_RESULTS;			// records information when a new best agent is found.
 
 void set_params(PARAMS p);
 void dump_agents(const char *str, AGENT_DATA *ag);
@@ -161,16 +168,16 @@ void dump_agent_pointers(const char *str, AGENT_DATA *ag);
 
 AGENT_DATA *initialize_agentsCPU();
 void free_agentsCPU(AGENT_DATA *agCPU);
-void run_CPU(AGENT_DATA *cv, RESULTS *r);
+void run_CPU(AGENT_DATA *cv);
 
 AGENT_DATA *initialize_agentsGPU(AGENT_DATA *agCPU);
 void dump_agentsGPU(const char *str, AGENT_DATA *agGPU);
 void dump_one_agentGPU(const char *str, AGENT_DATA *agGPU, unsigned ag);
 void free_agentsGPU(AGENT_DATA *agGPU);
-void run_GPU(AGENT_DATA *ag, RESULTS *r);
+void run_GPU(AGENT_DATA *ag);
 
 
-RESULTS *initialize_results();
+//RESULTS *initialize_results();
 void free_results(RESULTS *r);
 void display_results(const char *str, RESULTS *r);
 

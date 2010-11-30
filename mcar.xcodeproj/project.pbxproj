@@ -27,6 +27,8 @@
 		10D2572F12A19D7C004F4791 /* mcar_test_restart_small */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = mcar_test_restart_small; sourceTree = "<group>"; };
 		10D257AA12A1ADD8004F4791 /* todo.txt */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = todo.txt; sourceTree = "<group>"; };
 		10D2586212A27C51004F4791 /* optimize.txt */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = optimize.txt; sourceTree = "<group>"; };
+		10D25B6B12A54C2B004F4791 /* gpu_results.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = gpu_results.h; sourceTree = "<group>"; };
+		10D25B6C12A54C2B004F4791 /* gpu_results.cu */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cuda; path = gpu_results.cu; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -37,6 +39,8 @@
 				106FF80D119EE7F5000CD6C8 /* main.c */,
 				10294C5111A1A01400AAF551 /* mcar.h */,
 				10294C5011A1A01400AAF551 /* mcar.cu */,
+				10D25B6B12A54C2B004F4791 /* gpu_results.h */,
+				10D25B6C12A54C2B004F4791 /* gpu_results.cu */,
 			);
 			name = source;
 			sourceTree = "<group>";

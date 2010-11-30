@@ -58,10 +58,10 @@
 EXECUTABLE	:= mcar
 
 # Cuda source files (compiled with cudacc)
-CUFILES		:= mcar.cu cuda_utils.cu reduction.cu
+CUFILES		:= mcar.cu cuda_utils.cu reduction.cu gpu_results.cu
 
 # CUDA dependency files
-CU_DEPS	:= cuda_utils.h  misc_utils.h main.h mcar.h reduction.h Makefile
+CU_DEPS	:= cuda_utils.h  misc_utils.h main.h mcar.h reduction.h gpu_results.h Makefile
 
 # C/C++ source files (compiled with gcc / c++)
 CCFILES		:=  main.c misc_utils.c

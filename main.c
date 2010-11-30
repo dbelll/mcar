@@ -15,6 +15,7 @@
 #include "cuda_utils.h"
 #include "./common/inc/cutil.h"
 #include "mcar.h"
+#include "gpu_results.h"
 
 // print out information on using this program
 void display_help()
@@ -106,6 +107,7 @@ PARAMS read_params(int argc, const char **argv)
 	p.dump_all_winners = PARAM_PRESENT("DUMP_ALL_WINNERS");
 	p.dump_all_new_best = PARAM_PRESENT("DUMP_ALL_NEW_BEST");
 	p.dump_best = PARAM_PRESENT("DUMP_BEST");
+	p.dump_updates = PARAM_PRESENT("DUMP_UPDATES");
 	
 	p.test_interval = GET_PARAM("TEST_INTERVAL", p.time_steps);
 	p.test_reps = GET_PARAM("TEST_REPS", DEFAULT_TEST_REPS);
@@ -196,24 +198,25 @@ int main(int argc, const char **argv)
 	}
 	
 	if (p.run_on_CPU) {
-		RESULTS *rCPU = initialize_results();
-		run_CPU(agCPU, rCPU);
-		if (!p.no_print) display_results("CPU:", rCPU);
+//		RESULTS *rCPU = initialize_results();
+		run_CPU(agCPU);
+//		if (!p.no_print) display_results("CPU:", rCPU);
 #ifdef DUMP_FINAL_AGENTS
 		dump_agents("Final agents on CPU", agCPU);
 #endif
 	}
 	
 	if (p.run_on_GPU) {
-		RESULTS *rGPU = initialize_results();
-		run_GPU(agGPU, rGPU);
-		if (!p.no_print) display_results("GPU:", rGPU);
+//		RESULTS *rGPU = initialize_results();
+		run_GPU(agGPU);
+		if (!p.no_print) dump_GPU_result_list();
+		delete_GPU_result_list();
+
 #ifdef DUMP_FINAL_AGENTS
 		dump_agentsGPU("Final agents on GPU", agGPU);
 #endif
 		free_agentsGPU(agGPU);
 	}
-	
 	
 	return 0;
 }
