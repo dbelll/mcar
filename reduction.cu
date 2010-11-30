@@ -493,7 +493,7 @@ __host__ unsigned row_argmin(float *d_data, unsigned cols, unsigned rows, float 
 			// reduce the values in d_data and store the results in *d_min and put the indexes in *d_mincol
 			unsigned outCols = 1 + (cols-1) / (2*BLOCK_SIZE);
 #ifdef __DEBUG_REDUCTION__
-			printf("argmin_kernel, gridDim=(%dx%d), blockDim=(%dx%d), cols=%d, stride=%d, outCols = %d\n", gridDim.x, gridDim.y, blockDim.x, blockDim.y, cols, stride, outCols);
+			//			printf("argmin_kernel, gridDim=(%dx%d), blockDim=(%dx%d), cols=%d, stride=%d, outCols = %d\n", gridDim.x, gridDim.y, blockDim.x, blockDim.y, cols, stride, outCols);
 #endif
 			argmin_kernel<<<gridDim, blockDim>>>(d_data, cols, stride, d_minval, d_mincol, outCols);
 #ifdef __DEBUG_REDUCTION__

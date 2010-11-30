@@ -1419,7 +1419,7 @@ __global__ void share_best_kernel(float *d_agent_scores, unsigned *d_iBest)
 */
 void share_best(float *d_wins, float *d_agent_scores)
 {
-	device_dumpf("start of share_best\n   d_wins:", d_wins, _p.agents, _p.agents);
+  //device_dumpf("start of share_best\n   d_wins:", d_wins, _p.agents, _p.agents);
 	
 	// first accumulate the column totals times -1
 	col_reduce_x_k(d_wins, d_agent_scores, _p.agents, _p.agents, -1.0f);
@@ -1431,7 +1431,7 @@ void share_best(float *d_wins, float *d_agent_scores)
 	
 	// add row totals to the column totals in d_agent_scores
 	vsum(d_agent_scores, d_wins, _p.agents, _p.agents);
-	device_dumpf("   d_agent_scores after adding in row totals:", d_agent_scores, 1, _p.agents);
+	//device_dumpf("   d_agent_scores after adding in row totals:", d_agent_scores, 1, _p.agents);
 	
 	
 	float *d_bestVal;
@@ -1548,9 +1548,9 @@ void run_GPU(AGENT_DATA *agGPU, RESULTS *rGPU)
 			test_kernel2<<<test2GridDim, test2BlockDim>>>(d_results + ((i+1) / _p.chunks_per_test) * _p.agents);
 			
 			test_kernel3<<<test3GridDim, test3BlockDim>>>(d_wins);
-			dump_agentsGPU("after testing, before sharing", agGPU);
+			//dump_agentsGPU("after testing, before sharing", agGPU);
 			share_best(d_wins, d_agent_scores);
-			dump_agentsGPU("after sharing", agGPU);
+			//dump_agentsGPU("after sharing", agGPU);
 
 			CUDA_EVENT_STOP(timeTest);
 			CUT_CHECK_ERROR("test_kernel execution failed");
