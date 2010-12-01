@@ -1254,14 +1254,16 @@ __global__ void test_kernel3(float *d_wins)
 		int t;
 		for (t = 0; t < dc_p.test_max; t++) {
 			if (!done1) {
-				best_action2(s_s1 + idx, &action1, s_theta1 + ag1, 1, dc_p.hidden_nodes, NULL);
+				best_action2(s_s1 + idx, &action1, s_theta1, 1, dc_p.hidden_nodes, NULL);
+//				best_action2(s_s1 + idx, &action1, dc_ag.theta + ag1, dc_p.agents, dc_p.hidden_nodes, NULL);
 				take_action(s_s1 + idx, action1, s_s1 + idx, BLOCK_SIZE, dc_accel);
 				if (terminal_state(s_s1 + idx)) {
 					done1 = t+1;
 				}
 			}
 			if (!done2) {
-				best_action2(s_s2 + idx, &action2, s_theta2 + ag2, 1, dc_p.hidden_nodes, NULL);
+				best_action2(s_s2 + idx, &action2, s_theta2, 1, dc_p.hidden_nodes, NULL);
+//				best_action2(s_s2 + idx, &action2, dc_ag.theta + ag2, dc_p.agents, dc_p.hidden_nodes, NULL);
 				take_action(s_s2 + idx, action2, s_s2 + idx, BLOCK_SIZE, dc_accel);
 				if (terminal_state(s_s2 + idx)) done2 = 1 + t;
 			}
