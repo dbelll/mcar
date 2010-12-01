@@ -532,7 +532,7 @@ DUAL_PREFIX float choose_action(float *s, unsigned *pAction, float *theta, float
 	if (epsilon > 0.0f && RandUniform(seeds, stride) < epsilon){
 		// choose random action
 		float r = RandUniform(seeds, stride);
-		*pAction = r * NUM_ACTIONS;
+		*pAction = (unsigned)(r * NUM_ACTIONS);
 		return calc_Q(s, *pAction, theta, stride, num_hidden, activation);
 	}else{
 		// choose the best action
@@ -546,7 +546,7 @@ DUAL_PREFIX float choose_action2(float *s, unsigned *pAction, float *theta, floa
 	if (epsilon > 0.0f && RandUniform(seeds, stride_s) < epsilon){
 		// choose random action
 		float r = RandUniform(seeds, stride_s);
-		*pAction = r * NUM_ACTIONS;
+		*pAction = (unsigned)(r * NUM_ACTIONS);
 		return calc_Q2(s, *pAction, theta, stride_g, num_hidden, activation);
 	}else{
 		// choose the best action
