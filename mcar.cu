@@ -1598,14 +1598,14 @@ __global__ void copy_fitness_to_agent_kernel(float *d_steps)
 // calc the quality value for all agents
 unsigned calc_all_agents_quality(unsigned t, AGENT_DATA *agGPU, float *d_steps)
 {
-//	printf("[calc_all_agents_quality at time step %d\n", t);
+  //	printf("[calc_all_agents_quality at time step %d\n", t);
 	static int iOldBest = -1;
 	static float oldBestVal = BIG_FLOAT;
 	
 	dim3 blockDim(NUM_X_DIV);
 	dim3 gridDim(NUM_VEL_DIV, _p.agents);
 
-//	printf("about to call calc_all_quality_kernel wiht block size (%d x %d) grid size (%d x %d)\n", blockDim.x, blockDim.y, gridDim.x, gridDim.y);
+	//	printf("about to call calc_all_quality_kernel wiht block size (%d x %d) grid size (%d x %d)\n", blockDim.x, blockDim.y, gridDim.x, gridDim.y);
 	calc_all_quality_kernel<<<gridDim, blockDim>>>(MAX_STEPS_FOR_QUALITY, d_steps);
 	
 //	device_dumpf("d_steps", d_steps, _p.agents, NUM_TOT_DIV);
@@ -1633,7 +1633,7 @@ unsigned calc_all_agents_quality(unsigned t, AGENT_DATA *agGPU, float *d_steps)
 	unsigned newBestFlag = 0;
 	CUDA_SAFE_CALL(cudaMemcpy(&iBest, d_iBest, sizeof(unsigned), cudaMemcpyDeviceToHost));
 	
-//	printf("agent %d has the best fitness\n", iBest);
+	//	printf("agent %d has the best fitness\n", iBest);
 	
 	if (iBest != iOldBest) {
 		// we have a new best agent!
@@ -1641,20 +1641,20 @@ unsigned calc_all_agents_quality(unsigned t, AGENT_DATA *agGPU, float *d_steps)
 		iOldBest = iBest;
 		CUDA_SAFE_CALL(cudaMemcpy(&oldBestVal, d_bestVal, sizeof(float), cudaMemcpyDeviceToHost));
 
-//		printf("We have a new best agent with fitness of %f!!!\n", oldBestVal / NUM_TOT_DIV);
+		// printf("We have a new best agent with fitness of %f!!!\n", oldBestVal / NUM_TOT_DIV);
 		if (_p.dump_all_winners) dump_one_agentGPU("new best agent", agGPU, iBest);
 		add_to_GPU_result_list(agGPU, iBest, t);
 	}
 	if (newBestFlag || _p.share_always) {
 
-//		printf("going to share the best agent...\n");
+	  //		printf("going to share the best agent...\n");
 		// going to share the best agent
 		// need to create an agent score that is negative for agents that might be cloned from the best
 		float avg_fitness = clean_reduce(agGPU->fitness, _p.agents) / _p.agents;
-//		printf("average fitness is %f\n", avg_fitness / NUM_TOT_DIV);
+		//		printf("average fitness is %f\n", avg_fitness / NUM_TOT_DIV);
 		PRE_KERNEL("share_best_kernel");
-//		printf("avg_fitness is %f and iBest is %d\n", avg_fitness, iBest);
-//		device_dumpf("fitness values", agGPU->fitness, 1, _p.agents);
+		//		printf("avg_fitness is %f and iBest is %d\n", avg_fitness, iBest);
+		//		device_dumpf("fitness values", agGPU->fitness, 1, _p.agents);
 		share_best_kernel<<<gridDim, blockDim>>>(agGPU->fitness, avg_fitness, iBest, 0);
 		POST_KERNEL("share_best_kernel");
 		

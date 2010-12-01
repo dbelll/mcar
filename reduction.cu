@@ -606,10 +606,11 @@ __host__ void vsum(float *d_x, float *d_y, unsigned n, unsigned stride_y)
 __global__ void clean_reduce_kernel(float *d_data, float *d_sum, unsigned n, unsigned reps)
 {
 	unsigned idx = threadIdx.x;
-	if (idx > n) return;
+	//if (idx >= n) return;
 	
 	__shared__ float s_data[BLOCK_SIZE];
 	
+
 	// first do a bunch of sums from global into shared memory
 	s_data[idx] = d_data[idx];
 	for (int i = 1; i < reps; i++) {
@@ -617,6 +618,7 @@ __global__ void clean_reduce_kernel(float *d_data, float *d_sum, unsigned n, uns
 	}
 	__syncthreads();
 	
+
 	// now do a reduction on the values in shared memory
 	unsigned half = BLOCK_SIZE/2;
 	while (half > 0) {
@@ -639,13 +641,29 @@ __host__ float clean_reduce(float *d_data, unsigned n)
 	dim3 gridDim(1);
 	unsigned reps = 1 + (n-1)/BLOCK_SIZE;
 	
+	//printf("clean_reduce...\n");
+
+	//device_dumpf("agent fitness values on device", d_data, 1, n);
+
 	float *d_sum = device_allocf(1);
+
+	//printf("   allocated room for sum on device\n");
+
+	//printf("going to call clean_reduce_kernel for %d agents and need %d reps\n", n, reps);
+
+	PRE_KERNEL("clean_reduce_kernel")
 	clean_reduce_kernel<<<gridDim, blockDim>>>(d_data, d_sum, n, reps);
-	
+	POST_KERNEL("clean_reduce_kernel");
+
+	//printf("   returned from clean_reduct_kernel call, about ot copy result back to host\n");
 	float sum;
 	CUDA_SAFE_CALL(cudaMemcpy(&sum, d_sum, sizeof(float), cudaMemcpyDeviceToHost));
 
+	//printf("   sum is %f\n", sum);
+
 	cudaFree(d_sum);
+
+	//	printf("now exiting clean_reduce_kernel\n");
 	return sum;
 }
 
