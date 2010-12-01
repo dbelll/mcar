@@ -1,9 +1,9 @@
 \#!/bin/bash
 # Testing script for resonance computer
-_time="--TIME_STEPS=1048576"
+_time="--TIME_STEPS=2097152"
 _groups="--AGENT_GROUP_SIZE=32"
 _restart="--RESTART_INTERVAL=1024"
-_test="--TEST_INTERVAL=4096 --TEST_REPS=100 --TEST_MAX=1000"
+_test="--TEST_INTERVAL=65536 --TEST_REPS=100 --TEST_MAX=1000"
 _share="--SHARE_COMPETE --SHARE_BEST_PCT=0.50 --SHARE_FITNESS"
 _theta="--INIT_THETA_MIN=-0.10 --INIT_THETA_MAX=0.10"
 

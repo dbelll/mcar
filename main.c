@@ -66,7 +66,7 @@ PARAMS read_params(int argc, const char **argv)
 	if (argc == 1 || PARAM_PRESENT("HELP")) { display_help(); exit(1); }
 	
 	p.trials = GET_PARAM("TRIALS", 1);
-	//	set_seed(GET_PARAM("SEED", 0));
+	set_seed(GET_PARAM("SEED", 0));
 	p.time_steps = GET_PARAM("TIME_STEPS", 64);
 	p.agent_group_size = GET_PARAM("AGENT_GROUP_SIZE", 1);
 	p.agents = p.trials * p.agent_group_size;
