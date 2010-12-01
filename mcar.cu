@@ -165,6 +165,8 @@ DUAL_PREFIX float calc_Q(float *s, unsigned a, float *theta, unsigned stride, un
 }
 
 // different strides for state and theta
+// state has stride of BLOCK_SIZE
+// theta stride is specified by argument
 DUAL_PREFIX float calc_Q2(float *s, unsigned a, float *theta, unsigned stride_theta, unsigned num_hidden, float *activation)
 {
 	// adjust theta to point to beginning of this action's weights
@@ -1227,8 +1229,8 @@ __global__ void reset_gradient_kernel()
 	
 	threads per block = the number of competitions between each agent pair
 	blocks are in a square grid with the number of agents per group on each side
-	Agents compete for test_reps and the score is stored in the results array in the
-	row for agent a1, column for agent a2.
+	Agents compete for a maximum of test_reps or until one of them reaches finish line,
+	and the score is stored in the results array in the row for agent a1, column for agent a2.
 */
 __global__ void test_kernel3(float *d_wins)
 {
@@ -1242,6 +1244,9 @@ __global__ void test_kernel3(float *d_wins)
 	__shared__ float s_s2[2*BLOCK_SIZE];
 	__shared__ float s_wins[BLOCK_SIZE];
 	
+	__shared__ float s_theta1[MAX_NUM_WGTS];
+	__shared__ float s_theta2[MAX_NUM_WGTS];
+	
 	// copy seeds from ag1 to seeds[0] and [2] and from ag2 to seeds[1] and seeds[3]
 	// adding in the idx value so each competition has different seeds
 	// s_results will have +1 for ag1 wins and -1 for ag2 wins and 0 for ties
@@ -1251,6 +1256,15 @@ __global__ void test_kernel3(float *d_wins)
 	s_seeds[idx + 3*BLOCK_SIZE] = dc_ag.seeds[ag2 + 3*dc_p.agents] + idx;
 	s_wins[idx] = 0.0f;		// this is the number of wins for ag1
 	
+	// copy thetas for each agent to shared memory
+	for (int iOffset = 0; iOffset < dc_p.num_wgts; iOffset += blockDim.x) {
+		if (idx + iOffset < dc_p.num_wgts){
+			s_theta1[idx + iOffset] = dc_ag.theta[ag1 + (idx + iOffset) * dc_p.agents];
+			s_theta2[idx + iOffset] = dc_ag.theta[ag2 + (idx + iOffset) * dc_p.agents];
+		}
+	};
+	__syncthreads();
+		
 	// randomize the state for ag1 and copy the same state for ag2
 	randomize_state(s_s1 + idx, s_seeds + idx, BLOCK_SIZE);
 	s_s2[idx] = s_s1[idx];
@@ -1263,14 +1277,16 @@ __global__ void test_kernel3(float *d_wins)
 		int t;
 		for (t = 0; t < dc_p.test_max; t++) {
 			if (!done1) {
-				best_action2(s_s1 + idx, &action1, dc_ag.theta + ag1, dc_p.agents, dc_p.hidden_nodes, NULL);
+				best_action2(s_s1 + idx, &action1, s_theta1, 1, dc_p.hidden_nodes, NULL);
+//				best_action2(s_s1 + idx, &action1, dc_ag.theta + ag1, dc_p.agents, dc_p.hidden_nodes, NULL);
 				take_action(s_s1 + idx, action1, s_s1 + idx, BLOCK_SIZE, dc_accel);
 				if (terminal_state(s_s1 + idx)) {
 					done1 = t+1;
 				}
 			}
 			if (!done2) {
-				best_action2(s_s2 + idx, &action2, dc_ag.theta + ag2, dc_p.agents, dc_p.hidden_nodes, NULL);
+				best_action2(s_s2 + idx, &action2, s_theta2, 1, dc_p.hidden_nodes, NULL);
+//				best_action2(s_s2 + idx, &action2, dc_ag.theta + ag2, dc_p.agents, dc_p.hidden_nodes, NULL);
 				take_action(s_s2 + idx, action2, s_s2 + idx, BLOCK_SIZE, dc_accel);
 				if (terminal_state(s_s2 + idx)) done2 = 1 + t;
 			}

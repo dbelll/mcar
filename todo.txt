@@ -5,7 +5,7 @@ best result for each agent group, take the average over all the trials.
 Reduce number of arguments in device function calls
 
 
-Speed up test_kernel3 by copying the two theta values to shared memory
+>>>> Speed up test_kernel3 by copying the two theta values to shared memory
 
 improve number of threads per block for calc_quality kernel
 
