@@ -1628,11 +1628,13 @@ unsigned calc_all_agents_quality(unsigned t, AGENT_DATA *agGPU, float *d_steps)
 		newBestFlag = 1;
 		iOldBest = iBest;
 		CUDA_SAFE_CALL(cudaMemcpy(&oldBestVal, d_bestVal, sizeof(float), cudaMemcpyDeviceToHost));
+
 //		printf("We have a new best agent with fitness of %f!!!\n", oldBestVal / NUM_TOT_DIV);
 		if (_p.dump_all_winners) dump_one_agentGPU("new best agent", agGPU, iBest);
 		add_to_GPU_result_list(agGPU, iBest, t);
 	}
 	if (newBestFlag || _p.share_always) {
+
 //		printf("going to share the best agent...\n");
 		// going to share the best agent
 		// need to create an agent score that is negative for agents that might be cloned from the best
