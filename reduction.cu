@@ -603,5 +603,52 @@ __host__ void vsum(float *d_x, float *d_y, unsigned n, unsigned stride_y)
 }
 
 
+__global__ void clean_reduce_kernel(float *d_data, float *d_sum, unsigned n, unsigned reps)
+{
+	unsigned idx = threadIdx.x;
+	if (idx > n) return;
+	
+	__shared__ float s_data[BLOCK_SIZE];
+	
+	// first do a bunch of sums from global into shared memory
+	s_data[idx] = d_data[idx];
+	for (int i = 1; i < reps; i++) {
+		if (idx + i*blockDim.x < n)	s_data[idx] += d_data[idx + i*blockDim.x];
+	}
+	__syncthreads();
+	
+	// now do a reduction on the values in shared memory
+	unsigned half = BLOCK_SIZE/2;
+	while (half > 0) {
+		if (idx < half && (idx + half) < n) 
+			s_data[idx] += s_data[idx + half];
+		half /= 2;
+		__syncthreads();
+	}
+	
+	// place the total in the provided location
+	if (idx == 0) *d_sum = s_data[0];
+}
+
+/*
+	sum up the vector of n float values and return the sum
+*/
+__host__ float clean_reduce(float *d_data, unsigned n)
+{
+	dim3 blockDim(BLOCK_SIZE);
+	dim3 gridDim(1);
+	unsigned reps = 1 + (n-1)/BLOCK_SIZE;
+	
+	float *d_sum = device_allocf(1);
+	clean_reduce_kernel<<<gridDim, blockDim>>>(d_data, d_sum, n, reps);
+	
+	float sum;
+	CUDA_SAFE_CALL(cudaMemcpy(&sum, d_sum, sizeof(float), cudaMemcpyDeviceToHost));
+
+	cudaFree(d_sum);
+	return sum;
+}
+
+
 
 #endif

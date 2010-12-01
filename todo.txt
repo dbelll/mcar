@@ -2,12 +2,11 @@
 Only do reduction of best results across agents groups, not across the trials.  After getting the
 best result for each agent group, take the average over all the trials.
 
-Reduce number of arguments in device function calls
-
-
->>>> Speed up test_kernel3 by copying the two theta values to shared memory
-
 improve number of threads per block for calc_quality kernel
 
-straighten out timing values
+Setup competition to only compete against a certain number of others, such as 8, 16, or 32.  Then the winner of each group will have their fitness calc'd to see if they are the new best.  Sharing of the new best will be the same as current.
 
+
+Create visual learning tool to see the learning level of all the agents as they progress.
+Show agents dieing, being cloned, etc.  Possibly add sliders for changing the learning parameters
+for alpha, test-interval, add more agents

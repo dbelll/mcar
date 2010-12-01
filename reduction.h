@@ -26,6 +26,8 @@ __host__ float *col_reduce(float *d_data, float *d_totals, unsigned cols, unsign
 __host__ float *col_reduce_x_k(float *d_data, float *d_totals, unsigned cols, unsigned rows, float k);
 __host__ float *col_avg(float *d_data, float *d_totals, unsigned cols, unsigned rows);
 
+__host__ float clean_reduce(float *d_data, unsigned n);
+
 // add two vectors x and y storing result in x.  x has stride of 1, and y's stride is specified
 __host__ void vsum(float *x, float *y, unsigned n, unsigned stride_y);
 

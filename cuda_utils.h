@@ -41,11 +41,20 @@
 #ifndef __CUDA_UTILS_H__
 #define __CUDA_UTILS_H__
 
+#pragma mark -
+#pragma mark Flags to turn stuff on and off
 // define this symbol to print a message at all device_copyx calls
 //#define TRACE_DEVICE_ALLOCATIONS
 
+// define these symbols to turn on pre-kernel messages and post-kernel error checking
+//#define __PRE_KERNEL_ON
+//#define __POST_KERNEL_ON
+
 static int __iTemp;			// used in GET_PARAM macros
 static float __fTemp;		// used in GET_PARAM macros
+
+#pragma mark -
+#pragma mark memory allocating, dumping, copying
 
 // macros to read command line arguments or use a default value
 // This macro assums argc and argv are their normal values found in main()
@@ -117,5 +126,41 @@ void PRINT_TIME(float time, char *message);
 							cudaEventDestroy(__stop);
 
 #define CUDA_EVENT_STOP2(t, str)	CUDA_EVENT_STOP(t);		\
-									CUT_CHECK_ERROR(#str" ececution failed!");
+									CUT_CHECK_ERROR(#str" execution failed!");
+
+
+
+/*
+ *	PRE_ and POST_KERNEL macros which can be turned on and off from #define's
+ *	
+ *	PRE_KERNEL macro assumes the block and grid dimensions are in variables blockDim and gridDim
+ *	If using different variable names, use the PRE_KERNEL2 macro
+ */
+#ifdef __PRE_KERNEL_ON
+
+#define PRE_KERNEL(str) printf("about to call %s with block size (%d x %d) and grid size (%d x %d)\n", str, blockDim.x, blockDim.y, gridDim.x, gridDim.y);
+
+#define PRE_KERNEL2(str, bd, gd) printf("about to call %s with block size (%d x %d) and grid size (%d x %d)\n", str, bd.x, bd.y, gd.x, gd.y);
+
+#else
+
+#define PRE_KERNEL(str)
+#define PRE_KERNEL2(str, bd, gd)
+
 #endif
+
+
+#ifdef __POST_KERNEL_ON
+
+#define POST_KERNEL(str) CUT_CHECK_ERROR(#str" execution failed!!");
+
+#else
+
+#define POST_KERNEL(str)
+
+#endif
+
+
+
+#endif
+
