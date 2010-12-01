@@ -542,9 +542,10 @@ DUAL_PREFIX float choose_action(float *s, unsigned *pAction, float *theta, float
 
 DUAL_PREFIX float choose_action2(float *s, unsigned *pAction, float *theta, float epsilon, unsigned stride_g, unsigned num_hidden, float *activation, unsigned *seeds)
 {
-	if (epsilon > 0.0f && RandUniform(seeds, BLOCK_SIZE) < epsilon){
+	unsigned stride_s = BLOCK_SIZE;
+	if (epsilon > 0.0f && RandUniform(seeds, stride_s) < epsilon){
 		// choose random action
-		float r = RandUniform(seeds, BLOCK_SIZE);
+		float r = RandUniform(seeds, stride_s);
 		*pAction = r * NUM_ACTIONS;
 		return calc_Q2(s, *pAction, theta, stride_g, num_hidden, activation);
 	}else{
@@ -552,6 +553,18 @@ DUAL_PREFIX float choose_action2(float *s, unsigned *pAction, float *theta, floa
 		return best_action2(s, pAction, theta, stride_g, num_hidden, activation);
 	}
 }
+//DUAL_PREFIX float choose_action2(float *s, unsigned *pAction, float *theta, float epsilon, unsigned stride_g, unsigned num_hidden, float *activation, unsigned *seeds)
+//{
+//	if (epsilon > 0.0f && RandUniform(seeds, BLOCK_SIZE) < epsilon){
+//		// choose random action
+//		float r = RandUniform(seeds, BLOCK_SIZE);
+//		*pAction = r * NUM_ACTIONS;
+//		return calc_Q2(s, *pAction, theta, stride_g, num_hidden, activation);
+//	}else{
+//		// choose the best action
+//		return best_action2(s, pAction, theta, stride_g, num_hidden, activation);
+//	}
+//}
 
 DUAL_PREFIX unsigned terminal_state(float *s)
 {
@@ -982,7 +995,6 @@ void run_test(AGENT_DATA *ag, unsigned iTest)
 {
 	float total_steps = 0.0f;
 	float best_fitness = MAX_FITNESS;
-	unsigned best_agent = 999999;
 	
 	float save_s[STATE_SIZE];
 	unsigned save_action;			//**TODO** may not need to be saved
@@ -1039,7 +1051,7 @@ void run_test(AGENT_DATA *ag, unsigned iTest)
 		ag->fitness[agent] = agent_steps / _p.test_reps;
 		if (ag->fitness[agent] < best_fitness){
 			best_fitness = ag->fitness[agent];
-			best_agent = agent;
+//			best_agent = agent;
 		}
 		total_steps += agent_steps;
 
