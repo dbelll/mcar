@@ -1221,8 +1221,8 @@ __global__ void test_kernel3(float *d_wins)
 	__shared__ float s_s2[2*BLOCK_SIZE];
 	__shared__ float s_wins[BLOCK_SIZE];
 	
-	__shared__ float theta1[MAX_NUM_WGTS];
-	__shared__ float theta2[MAX_NUM_WGTS];
+	__shared__ float s_theta1[MAX_NUM_WGTS];
+	__shared__ float s_theta2[MAX_NUM_WGTS];
 	
 	// copy seeds from ag1 to seeds[0] and [2] and from ag2 to seeds[1] and seeds[3]
 	// adding in the idx value so each competition has different seeds
@@ -1236,19 +1236,12 @@ __global__ void test_kernel3(float *d_wins)
 	// copy thetas for each agent to shared memory
 	for (int iOffset = 0; iOffset < dc_p.num_wgts; iOffset += blockDim.x) {
 		if (idx + iOffset < dc_p.num_wgts){
-			theta1[idx + iOffset] = dc_ag.theta[iGlobal + (idx + iOffset) * dc_p.agents];
-			theta2[idx + iOffset] = dc_ag.theta[iGlobal + (idx + iOffset) * dc_p.agents];
+			s_theta1[idx + iOffset] = dc_ag.theta[ag1 + (idx + iOffset) * dc_p.agents];
+			s_theta2[idx + iOffset] = dc_ag.theta[ag2 + (idx + iOffset) * dc_p.agents];
 		}
 	};
-	
-	while (nReps * blockDim.x < dc_p.num_wgts) {
-		unsigned i = idx + nReps
-		if (idx + nReps * blockDim.x < dc_p.num_wgts) {
-			theta1[
-		}
-	}
-	
-	
+	__syncthreads();
+		
 	// randomize the state for ag1 and copy the same state for ag2
 	randomize_state(s_s1 + idx, s_seeds + idx, BLOCK_SIZE);
 	s_s2[idx] = s_s1[idx];
@@ -1261,14 +1254,14 @@ __global__ void test_kernel3(float *d_wins)
 		int t;
 		for (t = 0; t < dc_p.test_max; t++) {
 			if (!done1) {
-				best_action2(s_s1 + idx, &action1, dc_ag.theta + ag1, dc_p.agents, dc_p.hidden_nodes, NULL);
+				best_action2(s_s1 + idx, &action1, s_theta1 + ag1, 1, dc_p.hidden_nodes, NULL);
 				take_action(s_s1 + idx, action1, s_s1 + idx, BLOCK_SIZE, dc_accel);
 				if (terminal_state(s_s1 + idx)) {
 					done1 = t+1;
 				}
 			}
 			if (!done2) {
-				best_action2(s_s2 + idx, &action2, dc_ag.theta + ag2, dc_p.agents, dc_p.hidden_nodes, NULL);
+				best_action2(s_s2 + idx, &action2, s_theta2 + ag2, 1, dc_p.hidden_nodes, NULL);
 				take_action(s_s2 + idx, action2, s_s2 + idx, BLOCK_SIZE, dc_accel);
 				if (terminal_state(s_s2 + idx)) done2 = 1 + t;
 			}
