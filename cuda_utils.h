@@ -44,7 +44,7 @@
 #pragma mark -
 #pragma mark Flags to turn stuff on and off
 // define this symbol to print a message at all device_copyx calls
-#define TRACE_DEVICE_ALLOCATIONS
+//#define TRACE_DEVICE_ALLOCATIONS
 
 // define these symbols to turn on pre-kernel messages and post-kernel error checking
 //#define __PRE_KERNEL_ON

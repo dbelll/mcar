@@ -12,7 +12,7 @@
 #pragma mark -
 #pragma mark Problem Constants
 
-#define BLOCK_SIZE 32
+#define BLOCK_SIZE 64
 
 #define MIN_X -1.2f
 #define MAX_X 0.5f
