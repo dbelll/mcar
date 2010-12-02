@@ -12,7 +12,7 @@
 #pragma mark -
 #pragma mark Problem Constants
 
-#define BLOCK_SIZE 128
+#define BLOCK_SIZE 32
 
 #define MIN_X -1.2f
 #define MAX_X 0.5f
@@ -31,7 +31,7 @@
 
 // The crude divs are  used when testing all agents when compete = no
 #define CRUDE_DIV_X 0.100
-#define CRUDE_DIV_VEL 0.010
+#define CRUDE_DIV_VEL 0.0100
 #define CRUDE_NUM_X_DIV ((unsigned)(1.5f  + (MAX_X - MIN_X) / CRUDE_DIV_X))
 #define CRUDE_NUM_VEL_DIV ((unsigned)(1.5f + (MAX_VEL - MIN_VEL) / CRUDE_DIV_VEL))
 #define CRUDE_NUM_TOT_DIV (CRUDE_NUM_X_DIV * CRUDE_NUM_VEL_DIV)
