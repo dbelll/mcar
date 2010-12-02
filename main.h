@@ -8,7 +8,7 @@
  */
 
 
-//#define VERBOSE
+#define VERBOSE
 
 //#define DUMP_INITIAL_AGENTS
 //#define DUMP_AGENT_UPDATES

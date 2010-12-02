@@ -70,7 +70,7 @@ CCFILES		:=  main.c misc_utils.c
 #INCLUDES = -I/home/dbelll/cuda_libraries/
 
 # compiler flags
-CUDACCFLAGS = --profile --ptxas-options=-v --use_fast_math #--maxrregcount=32
+CUDACCFLAGS = --profile --ptxas-options=-v --use_fast_math #--maxrregcount=60
 
 ################################################################################
 # Rules and targets

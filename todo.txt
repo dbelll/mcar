@@ -18,3 +18,9 @@ Reduce register usage
 
 
 Have 2 different share_best_pct, one for when a new agent becomes the best and one for every other time.  Could then do away with the --SHARE_ALWAYS flag.
+
+
+---->>>>> check for restart within the learning kernel, don't do it in the CPU
+only break out of learning to do testing
+
+

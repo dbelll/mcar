@@ -208,6 +208,7 @@ DUAL_PREFIX float calc_Q2(float *s, unsigned a, float *theta, unsigned stride_th
 	return result;
 }
 
+
 // state and theta arrays have stride of 1
 DUAL_PREFIX float calc_Q3(float *s, unsigned a, float *theta, unsigned num_hidden, float *activation)
 {
@@ -335,41 +336,43 @@ DUAL_PREFIX void accumulate_gradient(float *s, unsigned a, float *theta, unsigne
 	}
 }
 
-DUAL_PREFIX void accumulate_gradient2(float *s, unsigned a, float *theta, unsigned stride_g, unsigned num_hidden, unsigned num_wgts, float *activation, float *W, float lambda, float gamma)
+DUAL_PREFIX void accumulate_gradient2(float *s, unsigned a, float *theta, float *activation, float *W)
 {
 	// First, decay all the existing gradients by lambda * gamma
-	for (int i = 0; i < num_wgts; i++) {
-		W[i*stride_g] *= lambda * gamma;
+	for (int i = 0; i < dc_p.num_wgts; i++) {
+		W[i*BLOCK_SIZE] *= dc_p.lambda * dc_p.gamma;
 	}
 
 
 	// Next, need to add in the new gradient for the specified action.
 	// adjust W & theta to point to this action's weights
-	unsigned offset = iActionStart(a, stride_g, num_hidden);
+	unsigned offset = iActionStart(a, BLOCK_SIZE, dc_p.num_hidden);
+//	theta += offset;
+//	W += offset;
 	theta += offset;
 	W += offset;
 
 	// for gradients to output node, the gradient equals the activation of the hidden layer node (or bias) 
 	// first update the gradient for bias -> output
-	unsigned iOutBias = offsetToOutputBias(stride_g, num_hidden);
+	unsigned iOutBias = offsetToOutputBias(BLOCK_SIZE, dc_p.num_hidden);
 	W[iOutBias] += -1.0f;
 
 	// next update the gradients with respect to weights from hidden to output
-	for (int j = 0; j < num_hidden; j++) {
-		W[iOutBias + (1+j)*stride_g] += activation[j * stride_g];
+	for (int j = 0; j < dc_p.num_hidden; j++) {
+		W[iOutBias + (1+j)*BLOCK_SIZE] += activation[j * BLOCK_SIZE];
 	}
 
 	// update the gradients with respect to the weights from input to hidden
-	for (int j = 0; j < num_hidden; j++) {
+	for (int j = 0; j < dc_p.num_hidden; j++) {
 		// first the bias weight
-		unsigned iHidBias = offsetToHiddenBias(j, stride_g, num_hidden);
+		unsigned iHidBias = offsetToHiddenBias(j, BLOCK_SIZE, dc_p.num_hidden);
 
 		// gradient of output i wrt wgt from input k to hidden j equals
 		// grad(in_j wrt wgt_kj) * grad(activation_j wrt in_j)     * grad(output activation wrt activation_j) = 
 		//    activation_k       * activation_j * (1-activation_j) *   wgt_ji
 		// The last two terms are only a function of j (and there is only one output node), so
 		// calculate grad to be the last two terms
-		float grad = activation[j*stride_g] * (1-activation[j*stride_g]) * theta[iOutBias + (1+j)*stride_g];
+		float grad = activation[j*BLOCK_SIZE] * (1-activation[j*BLOCK_SIZE]) * theta[iOutBias + (1+j)*BLOCK_SIZE];
 		
 		// total gradient is the activation of the input node times grad
 		// The updated value includes eligibility trace of prior gradient
@@ -377,7 +380,7 @@ DUAL_PREFIX void accumulate_gradient2(float *s, unsigned a, float *theta, unsign
 
 		// next the states
 		for (int k = 0; k < STATE_SIZE; k++) {
-			W[iHidBias + (k+1)*stride_g] += s[k * BLOCK_SIZE] * grad;
+			W[iHidBias + (k+1)*BLOCK_SIZE] += s[k * BLOCK_SIZE] * grad;
 		}
 	}
 }
@@ -438,40 +441,94 @@ DUAL_PREFIX void update_thetas(float *s, float *theta0, float *W0, float alpha, 
 	}
 }
 
-DUAL_PREFIX void update_thetas2(float *s, float *theta0, float *W0, float alpha, float error, unsigned stride_s, unsigned stride_g, unsigned num_hidden, float *activation)
+// theta and activation have stride of BLOCK_SIZE, W has stride based on value passed in (# agents)
+DUAL_PREFIX void update_thetas2(float *theta0, float *W0, float alpha, float error, float *activation)
 {	
 	// Repeat for all actions
 	for (int a = 0; a < NUM_ACTIONS; a++) {
 		// adjust theta and W to point to start of weights/gradients for this action
-		unsigned offset = iActionStart(a, stride_g, num_hidden);
-		float *theta = theta0 + offset;
-		float *W = W0 + offset;
+		float *theta = theta0 + iActionStart(a, BLOCK_SIZE, dc_p.num_hidden);
+		float *W = W0 + iActionStart(a, BLOCK_SIZE, dc_p.num_hidden);
 		
 		// First the bias
-		unsigned iOutBias = offsetToOutputBias(stride_g, num_hidden);
+		// wgt_j_i += alpha * error * W_ji
+		unsigned iOutBias = offsetToOutputBias(BLOCK_SIZE, dc_p.num_hidden);
 		theta[iOutBias] += alpha * error * W[iOutBias];
+//		if (isnan(theta[iOutBias])){
+//			printf("theta ISNAN !! added error of %9.6f with alpha of %9.6f\n", error, alpha);
+//		}
+
+#ifdef DEBUG_THETA_UPDATE
+		printf("\nupdate_thetas for error of %9.7f\n", error);
+		printf("output bias: change is alpha (%9.7f) * error (%9.7f) * gradient (%9.7f) to get new value of %9.7f\n", alpha, error, W[iOutBias], theta[iOutBias]);
+#endif
 
 		// next update each weight from hidden nodes to output node
-		for (int j = 0; j < num_hidden; j++) {
+		for (int j = 0; j < dc_p.num_hidden; j++) {
 			// wgt_j_i += alpha * error * W_ji
-			theta[iOutBias + (1+j) * stride_g] += alpha * error * W[iOutBias + (1+j)*stride_g];
+			theta[iOutBias + (1+j) * BLOCK_SIZE] += alpha * error * W[iOutBias + (1+j)*BLOCK_SIZE];
+#ifdef DEBUG_THETA_UPDATE
+		printf("hidden%d: change is alpha (%9.7f) * error (%9.7f) * gradient (%9.7f) to get new value of %9.7f\n", j, alpha, error, W[iOutBias + (1+j)*BLOCK_SIZE], theta[iOutBias + (1+j)*BLOCK_SIZE]);
+#endif
 		}
 		
 		// update weights from input layer to hidden layer for each node in hidden layer
-		for (int j = 0; j < num_hidden; j++) {
+		for (int j = 0; j < dc_p.num_hidden; j++) {
 			// first update the bias weight
 			// wgt_k_j = alpha * error * W_k_j
-			unsigned iHidBias = offsetToHiddenBias(j, stride_g, num_hidden);
+			unsigned iHidBias = offsetToHiddenBias(j, BLOCK_SIZE, dc_p.num_hidden);
 			theta[iHidBias] += alpha * error * W[iHidBias];
+#ifdef DEBUG_THETA_UPDATE
+			printf("bias -> hidden%d: change is alpha (%9.7f) * error (%9.7f) * gradient (%9.7f) to get new value of %9.7f\n", j, alpha, error, W[iHidBias], theta[iHidBias]);
+#endif
 			
 			// update the weights from the state nodes
 			for (int k = 0; k < STATE_SIZE; k++) {
 				// wgt_k_j = alpha * error * W_k_j
-				theta[iHidBias + (k+1) * stride_g] += alpha * error * W[iHidBias + (k+1)*stride_g];
+				theta[iHidBias + (k+1) * BLOCK_SIZE] += alpha * error * W[iHidBias + (k+1)*BLOCK_SIZE];
+#ifdef DEBUG_THETA_UPDATE
+			printf("state%d -> hidden%d: change is alpha (%9.7f) * error (%9.7f) * gradient (%9.7f) to get new value of %9.7f\n", k, j, alpha, error, W[iHidBias + (k+1)*BLOCK_SIZE], theta[iHidBias + (k+1)*BLOCK_SIZE]);
+#endif
 			}
 		}
 	}
 }
+
+
+//DUAL_PREFIX void update_thetas2(float *s, float *theta0, float *W0, float alpha, float error, unsigned stride_s, unsigned stride_g, unsigned num_hidden, float *activation)
+//{	
+//	// Repeat for all actions
+//	for (int a = 0; a < NUM_ACTIONS; a++) {
+//		// adjust theta and W to point to start of weights/gradients for this action
+//		unsigned offset = iActionStart(a, stride_g, num_hidden);
+//		float *theta = theta0 + offset;
+//		float *W = W0 + offset;
+//		
+//		// First the bias
+//		unsigned iOutBias = offsetToOutputBias(stride_g, num_hidden);
+//		theta[iOutBias] += alpha * error * W[iOutBias];
+//
+//		// next update each weight from hidden nodes to output node
+//		for (int j = 0; j < num_hidden; j++) {
+//			// wgt_j_i += alpha * error * W_ji
+//			theta[iOutBias + (1+j) * stride_g] += alpha * error * W[iOutBias + (1+j)*stride_g];
+//		}
+//		
+//		// update weights from input layer to hidden layer for each node in hidden layer
+//		for (int j = 0; j < num_hidden; j++) {
+//			// first update the bias weight
+//			// wgt_k_j = alpha * error * W_k_j
+//			unsigned iHidBias = offsetToHiddenBias(j, stride_g, num_hidden);
+//			theta[iHidBias] += alpha * error * W[iHidBias];
+//			
+//			// update the weights from the state nodes
+//			for (int k = 0; k < STATE_SIZE; k++) {
+//				// wgt_k_j = alpha * error * W_k_j
+//				theta[iHidBias + (k+1) * stride_g] += alpha * error * W[iHidBias + (k+1)*stride_g];
+//			}
+//		}
+//	}
+//}
 
 
 
@@ -540,17 +597,17 @@ DUAL_PREFIX float choose_action(float *s, unsigned *pAction, float *theta, float
 	}
 }
 
-DUAL_PREFIX float choose_action2(float *s, unsigned *pAction, float *theta, float epsilon, unsigned stride_g, unsigned num_hidden, float *activation, unsigned *seeds)
+DUAL_PREFIX float choose_action2(float *s, unsigned *pAction, float *theta, float *activation, unsigned *seeds)
 {
 	unsigned stride_s = BLOCK_SIZE;
-	if (epsilon > 0.0f && RandUniform(seeds, stride_s) < epsilon){
+	if (dc_p.epsilon > 0.0f && RandUniform(seeds, stride_s) < dc_p.epsilon){
 		// choose random action
 		float r = RandUniform(seeds, stride_s);
 		*pAction = (unsigned)(r * NUM_ACTIONS);
-		return calc_Q2(s, *pAction, theta, stride_g, num_hidden, activation);
+		return calc_Q2(s, *pAction, theta, BLOCK_SIZE, dc_p.num_hidden, activation);
 	}else{
 		// choose the best action
-		return best_action2(s, pAction, theta, stride_g, num_hidden, activation);
+		return best_action2(s, pAction, theta, BLOCK_SIZE, dc_p.num_hidden, activation);
 	}
 }
 //DUAL_PREFIX float choose_action2(float *s, unsigned *pAction, float *theta, float epsilon, unsigned stride_g, unsigned num_hidden, float *activation, unsigned *seeds)
@@ -1436,7 +1493,8 @@ __global__ void test_kernel(float *results)
 	results[iGlobal] = dc_ag.fitness[iGlobal];
 }
 
-__global__ void learn_kernel(unsigned steps, unsigned isRestart)
+//__global__ void learn_kernel(unsigned steps, unsigned isRestart)
+__global__ void learn_kernel(unsigned steps)
 {
 	unsigned iGlobal = threadIdx.x + (blockIdx.x + blockIdx.y * gridDim.x) * blockDim.x;
 	unsigned idx = threadIdx.x;
@@ -1448,6 +1506,10 @@ __global__ void learn_kernel(unsigned steps, unsigned isRestart)
 	__shared__ unsigned s_seeds[4*BLOCK_SIZE];
 	__shared__ float s_alpha[BLOCK_SIZE];
 	
+	__shared__ float s_theta[15*BLOCK_SIZE];
+	__shared__ float s_W[15*BLOCK_SIZE];
+	__shared__ float s_activation[BLOCK_SIZE];
+	
 	// copy state, action, and seeds to shared memory
 	s_s[idx] = dc_ag.s[iGlobal];
 	s_s[idx + BLOCK_SIZE] = dc_ag.s[iGlobal + dc_p.agents];
@@ -1457,31 +1519,76 @@ __global__ void learn_kernel(unsigned steps, unsigned isRestart)
 	s_seeds[idx + 2*BLOCK_SIZE] = dc_ag.seeds[iGlobal + 2*dc_p.agents];
 	s_seeds[idx + 3*BLOCK_SIZE] = dc_ag.seeds[iGlobal + 3*dc_p.agents];
 	s_alpha[idx] = dc_ag.alpha[iGlobal];
+
+	// hard-coded to 1 hidden node and state size of 2
+	s_theta[idx] = dc_ag.theta[iGlobal];
+	s_theta[idx + BLOCK_SIZE] = dc_ag.theta[iGlobal + dc_p.agents];
+	s_theta[idx + 2*BLOCK_SIZE] = dc_ag.theta[iGlobal + 2*dc_p.agents];
+	s_theta[idx + 3*BLOCK_SIZE] = dc_ag.theta[iGlobal + 3*dc_p.agents];
+	s_theta[idx + 4*BLOCK_SIZE] = dc_ag.theta[iGlobal + 4*dc_p.agents];
+	s_theta[idx + 5*BLOCK_SIZE] = dc_ag.theta[iGlobal + 5*dc_p.agents];
+	s_theta[idx + 6*BLOCK_SIZE] = dc_ag.theta[iGlobal + 6*dc_p.agents];
+	s_theta[idx + 7*BLOCK_SIZE] = dc_ag.theta[iGlobal + 7*dc_p.agents];
+	s_theta[idx + 8*BLOCK_SIZE] = dc_ag.theta[iGlobal + 8*dc_p.agents];
+	s_theta[idx + 9*BLOCK_SIZE] = dc_ag.theta[iGlobal + 9*dc_p.agents];
+	s_theta[idx + 10*BLOCK_SIZE] = dc_ag.theta[iGlobal + 10*dc_p.agents];
+	s_theta[idx + 11*BLOCK_SIZE] = dc_ag.theta[iGlobal + 11*dc_p.agents];
+	s_theta[idx + 12*BLOCK_SIZE] = dc_ag.theta[iGlobal + 12*dc_p.agents];
+	s_theta[idx + 13*BLOCK_SIZE] = dc_ag.theta[iGlobal + 13*dc_p.agents];
+	s_theta[idx + 14*BLOCK_SIZE] = dc_ag.theta[iGlobal + 14*dc_p.agents];
 	
-	if (isRestart) {
-//		randomize_stateGPU(iGlobal);
-//		randomize_state(dc_ag.s + iGlobal, dc_ag.seeds + iGlobal, dc_p.stride);
-		randomize_state(s_s + idx, s_seeds + idx, BLOCK_SIZE);
-		// gradients have already been reset
-		choose_action2(s_s + idx, s_action + idx, dc_ag.theta + iGlobal, dc_p.epsilon, dc_p.agents, dc_p.hidden_nodes, dc_ag.activation + iGlobal, s_seeds + idx);
-		calc_Q2(s_s + idx, s_action[idx], dc_ag.theta + iGlobal, dc_p.agents, dc_p.hidden_nodes, dc_ag.activation + iGlobal);
-	}
+	s_W[idx] = dc_ag.W[iGlobal];
+	s_W[idx + BLOCK_SIZE] = dc_ag.W[iGlobal + dc_p.agents];
+	s_W[idx + 2*BLOCK_SIZE] = dc_ag.W[iGlobal + 2*dc_p.agents];
+	s_W[idx + 3*BLOCK_SIZE] = dc_ag.W[iGlobal + 3*dc_p.agents];
+	s_W[idx + 4*BLOCK_SIZE] = dc_ag.W[iGlobal + 4*dc_p.agents];
+	s_W[idx + 5*BLOCK_SIZE] = dc_ag.W[iGlobal + 5*dc_p.agents];
+	s_W[idx + 6*BLOCK_SIZE] = dc_ag.W[iGlobal + 6*dc_p.agents];
+	s_W[idx + 7*BLOCK_SIZE] = dc_ag.W[iGlobal + 7*dc_p.agents];
+	s_W[idx + 8*BLOCK_SIZE] = dc_ag.W[iGlobal + 8*dc_p.agents];
+	s_W[idx + 9*BLOCK_SIZE] = dc_ag.W[iGlobal + 9*dc_p.agents];
+	s_W[idx + 10*BLOCK_SIZE] = dc_ag.W[iGlobal + 10*dc_p.agents];
+	s_W[idx + 11*BLOCK_SIZE] = dc_ag.W[iGlobal + 11*dc_p.agents];
+	s_W[idx + 12*BLOCK_SIZE] = dc_ag.W[iGlobal + 12*dc_p.agents];
+	s_W[idx + 13*BLOCK_SIZE] = dc_ag.W[iGlobal + 13*dc_p.agents];
+	s_W[idx + 14*BLOCK_SIZE] = dc_ag.W[iGlobal + 14*dc_p.agents];
 	
-	for (int t = 0; t < steps; t++) {
-		float Q_curr = calc_Q2(s_s + idx, s_action[idx], dc_ag.theta + iGlobal, dc_p.agents, dc_p.hidden_nodes, dc_ag.activation + iGlobal);
-		accumulate_gradient2(s_s + idx, s_action[idx], dc_ag.theta + iGlobal, dc_p.agents, dc_p.hidden_nodes, dc_p.num_wgts, dc_ag.activation + iGlobal, dc_ag.W + iGlobal, dc_p.lambda, dc_p.gamma);
+	s_activation[idx] = dc_ag.activation[iGlobal];
+	
+//	if (isRestart) {
+////		randomize_stateGPU(iGlobal);
+////		randomize_state(dc_ag.s + iGlobal, dc_ag.seeds + iGlobal, dc_p.stride);
+//		randomize_state(s_s + idx, s_seeds + idx, BLOCK_SIZE);
+//		// gradients have already been reset
+//		choose_action2(s_s + idx, s_action + idx, dc_ag.theta + iGlobal, dc_p.epsilon, dc_p.agents, dc_p.hidden_nodes, dc_ag.activation + iGlobal, s_seeds + idx);
+//		calc_Q2(s_s + idx, s_action[idx], dc_ag.theta + iGlobal, dc_p.agents, dc_p.hidden_nodes, dc_ag.activation + iGlobal);
+//	}
+	unsigned restart_counter = 0;
+	for (int t = 0; t < steps; t++, restart_counter--) {
+		// reset state at restart intervals
+		if (0 == restart_counter) {
+			randomize_state(s_s + idx, s_seeds + idx, BLOCK_SIZE);
+//			choose_action2(s_s + idx, s_action + idx, s_theta + idx, dc_p.epsilon, BLOCK_SIZE, dc_p.hidden_nodes, s_activation + idx, s_seeds + idx);
+			choose_action2(s_s + idx, s_action + idx, s_theta + idx, s_activation + idx, s_seeds + idx);
+			calc_Q2(s_s + idx, s_action[idx], s_theta + idx, BLOCK_SIZE, dc_p.hidden_nodes, s_activation + idx);
+			reset_gradient(s_W + idx, BLOCK_SIZE, dc_p.num_wgts);
+			restart_counter = dc_p.restart_interval;
+		}
+		
+		float Q_curr = calc_Q2(s_s + idx, s_action[idx], s_theta + idx, BLOCK_SIZE, dc_p.hidden_nodes, s_activation + idx);
+		accumulate_gradient2(s_s + idx, s_action[idx], s_theta + idx, s_activation + idx, s_W + idx);
 		float reward = take_action(s_s + idx, s_action[idx], s_s + idx, BLOCK_SIZE, dc_accel);
 		unsigned success = terminal_state(s_s + idx);
 		
 		if (success) randomize_state(s_s + idx, s_seeds + idx, BLOCK_SIZE);
-		float Q_next = choose_action2(s_s + idx, s_action + idx, dc_ag.theta + iGlobal, dc_p.epsilon, dc_p.agents, dc_p.hidden_nodes, dc_ag.activation + iGlobal, s_seeds + idx);
+		float Q_next = choose_action2(s_s + idx, s_action + idx, s_theta + idx, s_activation + idx, s_seeds + idx);
 //		if (success) Q_next = 0.0f;
 		float error = reward + dc_p.gamma * Q_next - Q_curr;
-		float _alpha = s_alpha[idx];
+//		float _alpha = s_alpha[idx];
 //		float _alpha = dc_p.alpha;
 //		if (success) _alpha = 1.0f;
-		update_thetas(NULL, dc_ag.theta + iGlobal, dc_ag.W + iGlobal, _alpha, error, dc_p.agents, dc_p.hidden_nodes, dc_ag.activation + iGlobal);
-		if (success) reset_gradient(dc_ag.W + iGlobal, dc_p.agents, dc_p.num_wgts);
+		update_thetas2(s_theta + idx, s_W + idx, s_alpha[idx], error, s_activation + idx);
+		if (success) reset_gradient(s_W + idx, BLOCK_SIZE, dc_p.num_wgts);
 	}
 	
 	// copy state, action and seeds back to global memory
@@ -1492,6 +1599,41 @@ __global__ void learn_kernel(unsigned steps, unsigned isRestart)
 	dc_ag.seeds[iGlobal + dc_p.agents] = s_seeds[idx + BLOCK_SIZE];
 	dc_ag.seeds[iGlobal + 2*dc_p.agents] = s_seeds[idx + 2*BLOCK_SIZE];
 	dc_ag.seeds[iGlobal + 3*dc_p.agents] = s_seeds[idx + 3*BLOCK_SIZE];
+	
+	dc_ag.theta[iGlobal] = s_theta[idx];
+	dc_ag.theta[iGlobal + dc_p.agents] = s_theta[idx + BLOCK_SIZE];
+	dc_ag.theta[iGlobal + 2*dc_p.agents] = s_theta[idx + 2*BLOCK_SIZE];
+	dc_ag.theta[iGlobal + 3*dc_p.agents] = s_theta[idx + 3*BLOCK_SIZE];
+	dc_ag.theta[iGlobal + 4*dc_p.agents] = s_theta[idx + 4*BLOCK_SIZE];
+	dc_ag.theta[iGlobal + 5*dc_p.agents] = s_theta[idx + 5*BLOCK_SIZE];
+	dc_ag.theta[iGlobal + 6*dc_p.agents] = s_theta[idx + 6*BLOCK_SIZE];
+	dc_ag.theta[iGlobal + 7*dc_p.agents] = s_theta[idx + 7*BLOCK_SIZE];
+	dc_ag.theta[iGlobal + 8*dc_p.agents] = s_theta[idx + 8*BLOCK_SIZE];
+	dc_ag.theta[iGlobal + 9*dc_p.agents] = s_theta[idx + 9*BLOCK_SIZE];
+	dc_ag.theta[iGlobal + 10*dc_p.agents] = s_theta[idx + 10*BLOCK_SIZE];
+	dc_ag.theta[iGlobal + 11*dc_p.agents] = s_theta[idx + 11*BLOCK_SIZE];
+	dc_ag.theta[iGlobal + 12*dc_p.agents] = s_theta[idx + 12*BLOCK_SIZE];
+	dc_ag.theta[iGlobal + 13*dc_p.agents] = s_theta[idx + 13*BLOCK_SIZE];
+ 	dc_ag.theta[iGlobal + 14*dc_p.agents] = s_theta[idx + 14*BLOCK_SIZE];
+	
+	dc_ag.W[iGlobal] = s_W[idx];
+	dc_ag.W[iGlobal + dc_p.agents] = s_W[idx + BLOCK_SIZE];
+	dc_ag.W[iGlobal + 2*dc_p.agents] = s_W[idx + 2*BLOCK_SIZE];
+	dc_ag.W[iGlobal + 3*dc_p.agents] = s_W[idx + 3*BLOCK_SIZE];
+	dc_ag.W[iGlobal + 4*dc_p.agents] = s_W[idx + 4*BLOCK_SIZE];
+	dc_ag.W[iGlobal + 5*dc_p.agents] = s_W[idx + 5*BLOCK_SIZE];
+	dc_ag.W[iGlobal + 6*dc_p.agents] = s_W[idx + 6*BLOCK_SIZE];
+	dc_ag.W[iGlobal + 7*dc_p.agents] = s_W[idx + 7*BLOCK_SIZE];
+	dc_ag.W[iGlobal + 8*dc_p.agents] = s_W[idx + 8*BLOCK_SIZE];
+	dc_ag.W[iGlobal + 9*dc_p.agents] = s_W[idx + 9*BLOCK_SIZE];
+	dc_ag.W[iGlobal + 10*dc_p.agents] = s_W[idx + 10*BLOCK_SIZE];
+	dc_ag.W[iGlobal + 11*dc_p.agents] = s_W[idx + 11*BLOCK_SIZE];
+	dc_ag.W[iGlobal + 12*dc_p.agents] = s_W[idx + 12*BLOCK_SIZE];
+	dc_ag.W[iGlobal + 13*dc_p.agents] = s_W[idx + 13*BLOCK_SIZE];
+ 	dc_ag.W[iGlobal + 14*dc_p.agents] = s_W[idx + 14*BLOCK_SIZE];
+	
+	dc_ag.activation[iGlobal] = s_activation[idx];
+	
 }
 
 // total x dimension is the agent number
@@ -1806,7 +1948,7 @@ void share_after_competition(unsigned t, AGENT_DATA *agGPU, unsigned *pBest, flo
 	}
 
 	cudaFree(d_winnerVal);
-//	cudaFree(d_iWinner);
+	cudaFree(d_iWinner);
 	// ***TODO free d_iWinner here too?
 }
 
@@ -1889,46 +2031,47 @@ void run_GPU(AGENT_DATA *agGPU)
 	START_TIMER(timerGPU);
 
 	
-	timing_feedback_header(_p.num_chunks);
-	for (int i = 0; i < _p.num_chunks; i++) {
+	timing_feedback_header(_p.num_tests);
+	for (int i = 0; i < _p.num_tests; i++) {
 		timing_feedback_dot(i);
 		
-		// restart at restart interval and always if just completed a test
-		unsigned isRestart = ((i > 0) && (0 == (i % _p.chunks_per_restart) || 0 == (i % _p.chunks_per_test)));
-		if (isRestart) {
-			// reset gradients (state will be randomized in the learning kernel)
-			CUDA_EVENT_START;
-			reset_gradient_kernel<<<resetGradientGridDim, resetGradientBlockDim>>>();
-			CUDA_EVENT_STOP2(timeReset, reset_gradient_kernel);
-		}
+//		// restart at restart interval and always if just completed a test
+//		unsigned isRestart = ((i > 0) && (0 == (i % _p.chunks_per_restart) || 0 == (i % _p.chunks_per_test)));
+//		if (isRestart) {
+//			// reset gradients (state will be randomized in the learning kernel)
+//			CUDA_EVENT_START;
+//			reset_gradient_kernel<<<resetGradientGridDim, resetGradientBlockDim>>>();
+//			CUDA_EVENT_STOP2(timeReset, reset_gradient_kernel);
+//		}
 		
 		// do some learning
 		CUDA_EVENT_START;
-		learn_kernel<<<gridDim, blockDim>>>(_p.chunk_interval, isRestart);
+//		learn_kernel<<<gridDim, blockDim>>>(_p.chunk_interval, isRestart);
+		learn_kernel<<<gridDim, blockDim>>>(_p.test_interval);
 		CUDA_EVENT_STOP2(timeLearn, learn_kernel);		
 //		dump_agentsGPU("after learning session", agGPU);
 		
 		// run tests and sharing
-		if (0 == ((i+1) % _p.chunks_per_test)) {
-			if (_p.share_compete) {
+//		if (0 == ((i+1) % _p.chunks_per_test)) {
+		if (_p.share_compete) {
 //				printf("running competition...");
-				CUDA_EVENT_START;
-				test_kernel3<<<test3GridDim, test3BlockDim>>>(d_wins);
-				CUDA_EVENT_STOP2(timeTest, test_kernel3);
+			CUDA_EVENT_START;
+			test_kernel3<<<test3GridDim, test3BlockDim>>>(d_wins);
+			CUDA_EVENT_STOP2(timeTest, test_kernel3);
 //				dump_agentsGPU("after testing, before sharing", agGPU);
 
-				CUDA_EVENT_START
-				share_after_competition(i * _p.chunk_interval, agGPU, &iBest, d_wins, d_agent_scores, d_steps);
-				CUDA_EVENT_STOP2(timeShare, share_after_competition);
+			CUDA_EVENT_START
+			share_after_competition(i * _p.test_interval, agGPU, &iBest, d_wins, d_agent_scores, d_steps);
+			CUDA_EVENT_STOP2(timeShare, share_after_competition);
 //				dump_agentsGPU("after sharing", agGPU);
-			}else if (_p.share_fitness) {
-				CUDA_EVENT_START
-				iBest = calc_all_agents_quality(i * _p.chunk_interval, agGPU, d_steps);
-				CUDA_EVENT_STOP2(timeCalcFitness, calc_all_agents_quality);
+		}else if (_p.share_fitness) {
+			CUDA_EVENT_START
+			iBest = calc_all_agents_quality(i * _p.test_interval, agGPU, d_steps);
+			CUDA_EVENT_STOP2(timeCalcFitness, calc_all_agents_quality);
 //				dump_agentsGPU("after sharing", agGPU);
-			}
-			
 		}
+			
+//		}
 		
 	}
 	printf("\n");
