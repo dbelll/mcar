@@ -20,12 +20,26 @@
 #define MAX_VEL 0.07f
 
 // parameters for calculating agent quality
-#define DIV_X 0.02
+// The fine division is used for recording quality in AGENT_DATA and for testing if competition
+// winner is better than current best.
+#define DIV_X 0.020
 #define DIV_VEL 0.002
 #define NUM_X_DIV ((unsigned)(1.5f  + (MAX_X - MIN_X) / DIV_X))
 #define NUM_VEL_DIV ((unsigned)(1.5f + (MAX_VEL - MIN_VEL) / DIV_VEL))
 #define NUM_TOT_DIV (NUM_X_DIV * NUM_VEL_DIV)
-#define MAX_STEPS_FOR_QUALITY 2000
+
+
+// The crude divs are  used when testing all agents when compete = no
+#define CRUDE_DIV_X 0.100
+#define CRUDE_DIV_VEL 0.010
+#define CRUDE_NUM_X_DIV ((unsigned)(1.5f  + (MAX_X - MIN_X) / CRUDE_DIV_X))
+#define CRUDE_NUM_VEL_DIV ((unsigned)(1.5f + (MAX_VEL - MIN_VEL) / CRUDE_DIV_VEL))
+#define CRUDE_NUM_TOT_DIV (CRUDE_NUM_X_DIV * CRUDE_NUM_VEL_DIV)
+
+
+#define MAX_STEPS_FOR_QUALITY 500		// used when calc'ing quality for all agents (no compete)
+#define FINAL_QUALITY_MAX_STEPS 2000		// used for recording winner quality on the AGENT_DATA, and
+										// to test if the competition winner is better than current best
 
 #define ACCEL_FACTOR 0.001f
 
@@ -68,7 +82,7 @@ typedef struct{
 	unsigned share_compete;		// flag to indicate that competition is used for sharing
 	unsigned share_fitness;		// flag to indicate that fitness is used for sharing
 	unsigned share_always;		// flag indicates that the best agent is always shared with losers, even when it has not changed from the previous best agent.
-	
+	float copy_alpha_multiplier;	// copied agent's alpha is the normal alpha times this factor
 	unsigned agents;			// total number of agents = agent_group_size * trials
 	unsigned num_sharing_intervals;	// number of sharing intervals = timp_steps / sharing_interval
 	

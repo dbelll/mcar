@@ -7,11 +7,12 @@
 	objects = {
 
 /* Begin PBXFileReference section */
-		1021428012A5CADE00A3ED95 /* mcar experiment baseline results */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = "mcar experiment baseline results"; sourceTree = "<group>"; };
+		1021428012A5CADE00A3ED95 /* mcar experiment compete baseline */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = "mcar experiment compete baseline"; sourceTree = "<group>"; };
 		10294C5011A1A01400AAF551 /* mcar.cu */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cuda; path = mcar.cu; sourceTree = "<group>"; };
 		10294C5111A1A01400AAF551 /* mcar.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = mcar.h; sourceTree = "<group>"; };
 		10294D4211A1B49500AAF551 /* profile_config */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = profile_config; sourceTree = "<group>"; };
 		10294DA311A1B99300AAF551 /* mcar_profile_log.csv */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = mcar_profile_log.csv; sourceTree = "<group>"; };
+		1047DA7512A6E6DA009786D8 /* mcar experiment no compete baseline */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = "mcar experiment no compete baseline"; sourceTree = "<group>"; };
 		104A964D1298080900DC5289 /* main.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = main.h; sourceTree = "<group>"; };
 		104A968512993F6600DC5289 /* cuda_rand.cu */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cuda; path = cuda_rand.cu; sourceTree = "<group>"; };
 		104A968812993F6600DC5289 /* cuda_utils.cu */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cuda; path = cuda_utils.cu; sourceTree = "<group>"; };
@@ -79,7 +80,8 @@
 				10D25445129FF459004F4791 /* junk */,
 				10D2572F12A19D7C004F4791 /* mcar_test_restart_small */,
 				10D2586212A27C51004F4791 /* optimize.txt */,
-				1021428012A5CADE00A3ED95 /* mcar experiment baseline results */,
+				1021428012A5CADE00A3ED95 /* mcar experiment compete baseline */,
+				1047DA7512A6E6DA009786D8 /* mcar experiment no compete baseline */,
 				104A96F9129951C400DC5289 /* utils */,
 				10294D9B11A1B93300AAF551 /* source */,
 				10294D9C11A1B93D00AAF551 /* other */,

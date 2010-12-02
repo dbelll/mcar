@@ -1517,7 +1517,7 @@ __global__ void share_best_kernel(float *d_agent_scores, float threshold, unsign
 		for (int i = 0; i < dc_p.num_wgts; i++) {
 			dc_ag.theta[idx + i * dc_p.agents] = dc_ag.theta[iBest + i * dc_p.agents];
 		}
-		dc_ag.alpha[idx] /= 2.0f;
+		dc_ag.alpha[idx] *= dc_p.copy_alpha_multiplier;
 	}
 }
 
@@ -1574,8 +1574,8 @@ __global__ void calc_all_quality_kernel(unsigned maxSteps, float *d_steps)
 	//    ... first agent weights
 	if (idx < dc_p.num_wgts) s_theta[idx] = dc_ag.theta[ag + idx * dc_p.agents];
 	//    ... then the state based on the x-dimension
-	s_s[idx] = MIN_X + DIV_X * idx;
-	s_s[idx + BLOCK_SIZE] = MIN_VEL + DIV_VEL * blockIdx.x;
+	s_s[idx] = MIN_X + CRUDE_DIV_X * idx;
+	s_s[idx + BLOCK_SIZE] = MIN_VEL + CRUDE_DIV_VEL * blockIdx.x;
 	
 	unsigned t;
 	unsigned action;
@@ -1584,7 +1584,7 @@ __global__ void calc_all_quality_kernel(unsigned maxSteps, float *d_steps)
 		take_action(s_s+idx, action, s_s+idx, BLOCK_SIZE, dc_accel);
 		if (terminal_state(s_s+idx)) break;
 	}
-	d_steps[ag * NUM_TOT_DIV + iGlobal] = (float)t;
+	d_steps[ag * CRUDE_NUM_TOT_DIV + iGlobal] = (float)t;
 }
 
 __global__ void copy_fitness_to_agent_kernel(float *d_steps)
@@ -1592,25 +1592,58 @@ __global__ void copy_fitness_to_agent_kernel(float *d_steps)
 	unsigned iGlobal = threadIdx.x + blockIdx.x * blockDim.x;
 	if (iGlobal >= dc_p.agents) return;
 	
-	dc_ag.fitness[iGlobal] = d_steps[iGlobal * NUM_TOT_DIV];
+	dc_ag.fitness[iGlobal] = d_steps[iGlobal * CRUDE_NUM_TOT_DIV];
 }
+
+/*
+	calculate the average quality of an agent by running it for specific starting positions spanning the state space
+*/
+float calc_agent_quality(AGENT_DATA *agGPU, unsigned iBest, float *d_steps, unsigned max_steps)
+{
+//	// calculate the number of values for x and velocity
+//	unsigned num_x = 1.5f  + (MAX_X - MIN_X) / DIV_X;
+//	unsigned num_vel = 1.5f + (MAX_VEL - MIN_VEL) / DIV_VEL;
+//	unsigned num_tot = num_x * num_vel;
+	
+//	printf("calc_agent_quality for best agent #%d\n   using %d x values, %d veloicty values, total of %d values\n", iBest, num_x, num_vel, num_tot);
+	
+	dim3 blockDim(NUM_X_DIV);
+	dim3 gridDim(NUM_VEL_DIV);
+	
+	// allocate a location to store the number of steps for every trial
+//	float *d_steps = device_allocf(num_tot);
+	
+//	printf("launching calc_quality_kernel with blocks of (%d x %d) and grid of (%d x %d)\n", blockDim.x, blockDim.y, gridDim.x, gridDim.y);
+	calc_quality_kernel<<<gridDim, blockDim>>>(iBest, max_steps, d_steps);
+	
+//	device_dumpf("steps for each x, velocity value", d_steps, num_vel, num_x);
+	
+	row_reduce(d_steps, NUM_TOT_DIV, 1);
+	float quality;
+	CUDA_SAFE_CALL(cudaMemcpy(&quality, d_steps, sizeof(float), cudaMemcpyDeviceToHost));
+	CUDA_SAFE_CALL(cudaMemcpy(agGPU->fitness + iBest, d_steps, sizeof(float), cudaMemcpyDeviceToDevice));
+
+//	printf("[calc_agent_quality] quality of %d is %7.2f\n", iBest, quality / NUM_TOT_DIV);
+	return quality; 
+}
+
 
 // calc the quality value for all agents
 unsigned calc_all_agents_quality(unsigned t, AGENT_DATA *agGPU, float *d_steps)
 {
   //	printf("[calc_all_agents_quality at time step %d\n", t);
 	static int iOldBest = -1;
-	static float oldBestVal = BIG_FLOAT;
+	static float oldBestQuality = BIG_FLOAT;
 	
-	dim3 blockDim(NUM_X_DIV);
-	dim3 gridDim(NUM_VEL_DIV, _p.agents);
+	dim3 blockDim(CRUDE_NUM_X_DIV);
+	dim3 gridDim(CRUDE_NUM_VEL_DIV, _p.agents);
 
 	//	printf("about to call calc_all_quality_kernel wiht block size (%d x %d) grid size (%d x %d)\n", blockDim.x, blockDim.y, gridDim.x, gridDim.y);
 	calc_all_quality_kernel<<<gridDim, blockDim>>>(MAX_STEPS_FOR_QUALITY, d_steps);
 	
 //	device_dumpf("d_steps", d_steps, _p.agents, NUM_TOT_DIV);
 	
-	row_reduce(d_steps, NUM_TOT_DIV, _p.agents);
+	row_reduce(d_steps, CRUDE_NUM_TOT_DIV, _p.agents);
 	
 //	device_dumpf("d_steps, after row reduce", d_steps, _p.agents, NUM_TOT_DIV);
 
@@ -1636,14 +1669,23 @@ unsigned calc_all_agents_quality(unsigned t, AGENT_DATA *agGPU, float *d_steps)
 	//	printf("agent %d has the best fitness\n", iBest);
 	
 	if (iBest != iOldBest) {
-		// we have a new best agent!
-		newBestFlag = 1;
-		iOldBest = iBest;
-		CUDA_SAFE_CALL(cudaMemcpy(&oldBestVal, d_bestVal, sizeof(float), cudaMemcpyDeviceToHost));
+		// we have a possible new best agent!
+		// calc the accurate fitness for iBest
+		float iBestQuality = calc_agent_quality(agGPU, iBest, d_steps, FINAL_QUALITY_MAX_STEPS);
+		if (iBestQuality < oldBestQuality) {
+			// we really do have a new best agent
+//			printf("new best with quality of %9.1f, old quality was %9.1f\n", iBestQuality, oldBestQuality);
+			newBestFlag = 1;
+			iOldBest = iBest;
+			oldBestQuality = iBestQuality;
+			if (_p.dump_all_winners) dump_one_agentGPU("new best agent", agGPU, iBest);
+			add_to_GPU_result_list(agGPU, iBest, t);
+		}else {
+			// the reigning best agent is still the best, but it's fitness has been over-written
+			// in agGPU.  This is not a problem except when the agGPU fitness is printed it needs
+			// to be multiplied by NUM_TOT_DIV / CRUDE_NUM_TOT_DIV
+		}
 
-		// printf("We have a new best agent with fitness of %f!!!\n", oldBestVal / NUM_TOT_DIV);
-		if (_p.dump_all_winners) dump_one_agentGPU("new best agent", agGPU, iBest);
-		add_to_GPU_result_list(agGPU, iBest, t);
 	}
 	if (newBestFlag || _p.share_always) {
 
@@ -1664,37 +1706,7 @@ unsigned calc_all_agents_quality(unsigned t, AGENT_DATA *agGPU, float *d_steps)
 }
 
 
-/*
-	calculate the average quality of an agent by running it for specific starting positions spanning the state space
-*/
-float calc_agent_quality(AGENT_DATA *agGPU, unsigned iBest, float *d_steps)
-{
-//	// calculate the number of values for x and velocity
-//	unsigned num_x = 1.5f  + (MAX_X - MIN_X) / DIV_X;
-//	unsigned num_vel = 1.5f + (MAX_VEL - MIN_VEL) / DIV_VEL;
-//	unsigned num_tot = num_x * num_vel;
-	
-//	printf("calc_agent_quality for best agent #%d\n   using %d x values, %d veloicty values, total of %d values\n", iBest, num_x, num_vel, num_tot);
-	
-	dim3 blockDim(NUM_X_DIV);
-	dim3 gridDim(NUM_VEL_DIV);
-	
-	// allocate a location to store the number of steps for every trial
-//	float *d_steps = device_allocf(num_tot);
-	
-//	printf("launching calc_quality_kernel with blocks of (%d x %d) and grid of (%d x %d)\n", blockDim.x, blockDim.y, gridDim.x, gridDim.y);
-	calc_quality_kernel<<<gridDim, blockDim>>>(iBest, MAX_STEPS_FOR_QUALITY, d_steps);
-	
-//	device_dumpf("steps for each x, velocity value", d_steps, num_vel, num_x);
-	
-	row_reduce(d_steps, NUM_TOT_DIV, 1);
-	float quality;
-	CUDA_SAFE_CALL(cudaMemcpy(&quality, d_steps, sizeof(float), cudaMemcpyDeviceToHost));
-	CUDA_SAFE_CALL(cudaMemcpy(agGPU->fitness + iBest, d_steps, sizeof(float), cudaMemcpyDeviceToDevice));
 
-//	printf("[calc_agent_quality] quality of %d is %7.2f\n", iBest, quality / NUM_TOT_DIV);
-	return quality; 
-}
 
 /*
 	determine the new best agent based on the new winner, with a possible fitness comparison
@@ -1717,7 +1729,7 @@ unsigned determine_new_best(AGENT_DATA *agGPU, unsigned *d_iWinner, unsigned *pB
 		// The competition winner is different than the current best agent.
 		if (_p.share_fitness) {
 			// check fitness of winner and compare to fitness of best agent
-			float winnerQuality = calc_agent_quality(agGPU, iWinner, d_steps);
+			float winnerQuality = calc_agent_quality(agGPU, iWinner, d_steps, FINAL_QUALITY_MAX_STEPS);
 //			printf("quality of %d is %f\n", iWinner, winnerQuality);
 			if (winnerQuality >= iBestQuality){
 //				printf("%d is not good enough to become the new best\n", iWinner);
@@ -1732,7 +1744,7 @@ unsigned determine_new_best(AGENT_DATA *agGPU, unsigned *d_iWinner, unsigned *pB
 			// calc quality for information purposes
 			if (iWinner != iBest){
 				
-				calc_agent_quality(agGPU, iWinner, d_steps);
+				calc_agent_quality(agGPU, iWinner, d_steps, FINAL_QUALITY_MAX_STEPS);
 				if (_p.dump_all_new_best) dump_one_agentGPU("new best agent", agGPU, iWinner);
 			}
 			
@@ -1815,9 +1827,17 @@ void run_GPU(AGENT_DATA *agGPU)
 	float *d_results = device_allocf(_p.agents * _p.num_tests);
 	
 	// allocate a temporary area on device to hold the steps array for the quality calculation
-	// need only one if doing competition,
+	// if doing competition, then only need room for one agent with NUM_TOT_DIV values
+	// if doing competion, must be able to hold the greater of NUM_TOT_DIV and
+	//      _p.agents * CRUDE_NUM_TOT_DIV
 	// need one arrary for each agent if not doing competition
-	float *d_steps = device_allocf(NUM_TOT_DIV * (_p.share_compete ? 1 : _p.agents));
+	unsigned steps_size = NUM_TOT_DIV;
+	if (!_p.share_compete && (steps_size < (CRUDE_NUM_TOT_DIV * _p.agents)))
+		steps_size = CRUDE_NUM_TOT_DIV * _p.agents;
+	
+	printf("NUM_TOT_DIV is %d, CRUDE_NUM_TOT_DIV is %d, num agents is %d, so size of d_steps is %d\n", NUM_TOT_DIV, CRUDE_NUM_TOT_DIV, _p.agents, steps_size);
+	
+	float *d_steps = device_allocf(steps_size);
 	
 	// allocate memory on device to hold temporary wins and temporary agent scores
 	float *d_wins = device_allocf(_p.agents * _p.agents);
@@ -1924,7 +1944,10 @@ void run_GPU(AGENT_DATA *agGPU)
 #ifdef DUMP_FINAL_AGENTS
 	dump_agents_GPU("--------------------------------------\n       Ending Agent States\n", agGPU);
 #endif
-	if (_p.dump_best) dump_one_agentGPU("Best Agent on GPU:", agGPU, iBest);
+	if (_p.dump_best){
+		dump_one_agentGPU("Best Agent on GPU:", agGPU, iBest);
+		printf("quality based on %d MAX_ITERATIONS is %8.3f\n", FINAL_QUALITY_MAX_STEPS, calc_agent_quality(agGPU, iBest, d_steps, FINAL_QUALITY_MAX_STEPS) / NUM_TOT_DIV);
+	}
 
 	if (d_results) cudaFree(d_results);
 	if (d_wins) cudaFree(d_wins);

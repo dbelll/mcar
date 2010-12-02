@@ -10,3 +10,11 @@ Setup competition to only compete against a certain number of others, such as 8,
 Create visual learning tool to see the learning level of all the agents as they progress.
 Show agents dieing, being cloned, etc.  Possibly add sliders for changing the learning parameters
 for alpha, test-interval, add more agents
+
+Investigate why fitness values change slightly.  Is Rand... function being called from some testing routing?
+
+Reduce register usage
+
+
+
+Have 2 different share_best_pct, one for when a new agent becomes the best and one for every other time.  Could then do away with the --SHARE_ALWAYS flag.

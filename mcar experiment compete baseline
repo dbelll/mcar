@@ -2,18 +2,18 @@ seeds are 2784565659 1491908209 3415062841 3293636241
 [MCAR][HIDDEN_NODES  1[TRIALS      1][TIME_STEPS  65536][SHARE_BEST_PCT 0.5000][AGENT_GROUP_SIZE     16][ALPHA 0.2000][EPSILON 0.1000][GAMMA 0.9500][LAMBDA 0.2000][TEST_INTERVAL   4096][TEST_REPS    100][TEST_MAX   1000][RESTART_INTERVAL   1024][CHUNK_INTERVAL   1024][SHARE_COMPETE]
 --------------------------------|
 ..
--->    3 is new best agent with fitness of  571.90   ........
--->    1 is new best agent with fitness of  554.93   ....
--->    5 is new best agent with fitness of  575.49   ..
--->   12 is new best agent with fitness of  570.87   ......
--->    5 is new best agent with fitness of  573.15   ....
--->   15 is new best agent with fitness of  580.52   ......
--->    5 is new best agent with fitness of  215.90   
-    6697.958 ms for total GPU time
-       0.658 ms for reset_gradient_kernel time
-    1783.112 ms for learn time
-    4813.206 ms for test time
-      36.580 ms for share time
+-->    3 is new best agent with fitness of  573.54   ........
+-->    1 is new best agent with fitness of  555.00   ....
+-->    5 is new best agent with fitness of  580.14   ..
+-->   12 is new best agent with fitness of  578.23   ......
+-->    5 is new best agent with fitness of  577.28   ....
+-->   15 is new best agent with fitness of  579.85   ......
+-->    5 is new best agent with fitness of  216.53   
+    2488.452 ms for total GPU time
+       0.663 ms for reset_gradient_kernel time
+    1687.093 ms for learn time
+     697.289 ms for test time
+      43.030 ms for share time
        0.000 ms for calc fitness time
 Best Agent on GPU:
 [agent 5]:    seeds = 4185679562, 597631981, 2510879507, 808374342
@@ -33,17 +33,18 @@ Best Agent on GPU:
               x' --> hidden 0 -0.261498  0.000108
             bias --> output   11.103768 -0.232959
         hidden 0 --> output   -8.908856  0.231660
-fitness = 215.903   alpha =  0.0000
+fitness = 216.534   alpha =  0.0000
 
 Current State: x = -0.588053  x' = -0.007342, stored action is NONE
         HIDDEN NODE    ACTIVATION
 [  NONE]     0       0.994697
 
+quality based on 2000 MAX_ITERATIONS is  215.896
 GPU_result_list:
-[timestep =     3072][agent =   3][fitness = 571.905]
-[timestep =    19456][agent =   1][fitness = 554.933]
-[timestep =    27648][agent =   5][fitness = 575.486]
-[timestep =    31744][agent =  12][fitness = 570.866]
-[timestep =    44032][agent =   5][fitness = 573.147]
-[timestep =    52224][agent =  15][fitness = 580.524]
-[timestep =    64512][agent =   5][fitness = 215.903]
+[timestep =     3072][agent =   3][fitness = 573.537]
+[timestep =    19456][agent =   1][fitness = 555.003]
+[timestep =    27648][agent =   5][fitness = 580.140]
+[timestep =    31744][agent =  12][fitness = 578.230]
+[timestep =    44032][agent =   5][fitness = 577.283]
+[timestep =    52224][agent =  15][fitness = 579.846]
+[timestep =    64512][agent =   5][fitness = 216.534]

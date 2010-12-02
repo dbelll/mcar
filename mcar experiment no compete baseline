@@ -1,0 +1,48 @@
+seeds are 2784565659 1491908209 3415062841 3293636241
+[MCAR][HIDDEN_NODES  1[TRIALS      1][TIME_STEPS  65536][SHARE_BEST_PCT 0.5000][AGENT_GROUP_SIZE     16][ALPHA 0.2000][EPSILON 0.1000][GAMMA 0.9500][LAMBDA 0.2000][TEST_INTERVAL   4096][TEST_REPS    100][TEST_MAX   1000][RESTART_INTERVAL   1024][CHUNK_INTERVAL   1024][SHARE_FITNESS]
+--------------------------------|
+..
+-->    0 is new best agent with fitness of  554.12   ....
+-->    8 is new best agent with fitness of  489.35   ..
+-->   12 is new best agent with fitness of  469.84   ....
+-->    3 is new best agent with fitness of  365.44   ....
+-->   12 is new best agent with fitness of  278.30   ....
+-->   14 is new best agent with fitness of  111.50   ............
+    3316.139 ms for total GPU time
+       0.632 ms for reset_gradient_kernel time
+    1688.984 ms for learn time
+       0.000 ms for test time
+       0.000 ms for share time
+    1565.916 ms for calc fitness time
+Best Agent on GPU:
+[agent 14]:    seeds = 1427232812, 214453657, 2411404127, 2596300178
+          FROM          TO       THETA       W  
+[  LEFT]    bias --> hidden 0 -3.411514  0.000000
+              x  --> hidden 0 -1.336950  0.000000
+              x' --> hidden 0  0.045836 -0.000000
+            bias --> output   11.295297 -0.000002
+        hidden 0 --> output   -8.847675  0.000002
+[  NONE]    bias --> hidden 0 -3.408117  0.000001
+              x  --> hidden 0 -1.230917  0.000001
+              x' --> hidden 0 -0.002819 -0.000000
+            bias --> output   11.282598 -0.000009
+        hidden 0 --> output   -8.869542  0.000009
+[ RIGHT]    bias --> hidden 0 -3.227013  0.249981
+              x  --> hidden 0 -2.293643  0.056048
+              x' --> hidden 0 -0.312395 -0.009069
+            bias --> output   11.253205 -1.234557
+        hidden 0 --> output   -8.856607  1.205654
+fitness = 110.888   alpha =  0.0000
+
+Current State: x = -0.181367  x' =  0.035124, stored action is RIGHT
+        HIDDEN NODE    ACTIVATION
+[ RIGHT]     0       0.974220
+
+quality based on 2000 MAX_ITERATIONS is  112.038
+GPU_result_list:
+[timestep =     3072][agent =   0][fitness = 554.118]
+[timestep =    11264][agent =   8][fitness = 489.349]
+[timestep =    15360][agent =  12][fitness = 469.841]
+[timestep =    23552][agent =   3][fitness = 365.437]
+[timestep =    31744][agent =  12][fitness = 278.296]
+[timestep =    39936][agent =  14][fitness = 111.502]

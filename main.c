@@ -75,6 +75,7 @@ PARAMS read_params(int argc, const char **argv)
 	p.share_compete = PARAM_PRESENT("SHARE_COMPETE");
 	p.share_fitness = PARAM_PRESENT("SHARE_FITNESS");
 	p.share_always = PARAM_PRESENT("SHARE_ALWAYS");
+	p.copy_alpha_multiplier = GET_PARAMF("COPY_ALPHA_MULTIPLIER", 0.5f);
 	
 //	// set sharing interval to total time steps if only one agent, or if it exceeds the time steps
 //	if (p.agents == 1) p.sharing_interval = p.time_steps;
@@ -169,8 +170,8 @@ PARAMS read_params(int argc, const char **argv)
 	p.state_size = STATE_SIZE;		// x and x'
 	p.num_actions = NUM_ACTIONS;	// left, none, and right
 	
-	printf("[MCAR][HIDDEN_NODES%3d[TRIALS%7d][TIME_STEPS%7d][SHARE_BEST_PCT%7.4f][AGENT_GROUP_SIZE%7d][ALPHA%7.4f]"
-		   "[EPSILON%7.4f][GAMMA%7.4f][LAMBDA%7.4f][TEST_INTERVAL%7d][TEST_REPS%7d][TEST_MAX%7d][RESTART_INTERVAL%7d][CHUNK_INTERVAL%7d]", p.hidden_nodes, p.trials, p.time_steps, p.share_best_pct, p.agent_group_size, p.alpha, p.epsilon, p.gamma, p.lambda, p.test_interval, p.test_reps, p.test_max, p.restart_interval, p.chunk_interval);
+	printf("[MCAR][HIDDEN_NODES%3d[TRIALS%7d][TIME_STEPS%7d][SHARE_BEST_PCT%7.4f][COPY_ALPHA_MULTIPLIER%7.4f][AGENT_GROUP_SIZE%7d][ALPHA%7.4f]"
+		   "[EPSILON%7.4f][GAMMA%7.4f][LAMBDA%7.4f][TEST_INTERVAL%7d][TEST_REPS%7d][TEST_MAX%7d][RESTART_INTERVAL%7d][CHUNK_INTERVAL%7d]", p.hidden_nodes, p.trials, p.time_steps, p.share_best_pct, p.copy_alpha_multiplier, p.agent_group_size, p.alpha, p.epsilon, p.gamma, p.lambda, p.test_interval, p.test_reps, p.test_max, p.restart_interval, p.chunk_interval);
 
 	if (p.share_compete) printf("[SHARE_COMPETE]");
 	if (p.share_fitness) printf("[SHARE_FITNESS]");
