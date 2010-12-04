@@ -173,6 +173,7 @@ typedef struct{
 	unsigned time_step;	// timestep of taking over as new
 	unsigned agent;		// agent number
 	float fitness;		// agent fitness
+	float time;			// amount of time for this episode
 //	float *theta;		// copy of the theta values at that time  //**TODO implement later
 } GPU_RESULTS;			// records information when a new best agent is found.
 

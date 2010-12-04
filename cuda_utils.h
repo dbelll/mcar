@@ -83,6 +83,16 @@ void device_dumpf(const char *str, float *data, unsigned nRows, unsigned nCols);
 void host_dumpui(const char *str, unsigned *data, unsigned nRows, unsigned nCols);
 void device_dumpui(const char *str, unsigned *data, unsigned nRows, unsigned nCols);
 
+#ifdef TRACE_DEVICE_ALLOCATIONS
+
+#define deviceFree(d_data) printf("[device_free] data at %p\n", d_data);	\
+							cudaFree(d_data);
+
+#else
+
+#define deviceFree(d_data) cudaFree(d_data)
+
+#endif
 
 
 // Macros for calculating timing values.
@@ -129,6 +139,24 @@ void PRINT_TIME(float time, char *message);
 									CUT_CHECK_ERROR(#str" execution failed!");
 
 
+// CUDA_EVENTN_... macros can be used to manage n timers
+#define CUDA_EVENTN_PREPARE(n)	cudaEvent_t __start2[n], __stop2[n];	\
+									float __timeTemp2[n];				\
+									unsigned __numTemp2 = n;			\
+									for(int i=0; i<(n); i++){			\
+										cudaEventCreate(__start2 + i);	\
+										cudaEventCreate(__stop2 + i);}	\
+
+#define CUDA_EVENTN_START(i)	cudaEventRecord(__start2[i], 0);
+
+#define CUDA_EVENTN_STOP(t, i)	cudaEventRecord(__stop2[i], 0);								\
+								cudaEventSynchronize(__stop2[i]);							\
+								cudaEventElapsedTime(__timeTemp2+i, __start2[i], __stop2[i]);	\
+								t += __timeTemp2[i];
+
+#define CUDA_EVENTN_CLEANUP		for(int i=0; i<__numTemp2; i++){	\
+									cudaEventDestroy(__start2[i]);	\
+									cudaEventDestroy(__stop2[i]);}
 
 /*
  *	PRE_ and POST_KERNEL macros which can be turned on and off from #define's

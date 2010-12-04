@@ -74,9 +74,12 @@ float *device_allocf(unsigned count_data)
 {
 	float *d_data;
 	#ifdef TRACE_DEVICE_ALLOCATIONS
-		printf("[device_allocf] count = %d\n", count_data);
+		printf("[device_allocf] count = %d", count_data);
 	#endif
 	CUDA_SAFE_CALL(cudaMalloc((void **)&d_data, count_data * sizeof(float)));
+	#ifdef TRACE_DEVICE_ALLOCATIONS
+		printf(" at %p\n", d_data);
+	#endif
 	return d_data;
 }
 
@@ -84,9 +87,12 @@ unsigned *device_allocui(unsigned count_data)
 {
 	unsigned *d_data;
 	#ifdef TRACE_DEVICE_ALLOCATIONS
-		printf("[device_allocui] count = %d\n", count_data);
+		printf("[device_allocui] count = %d", count_data);
 	#endif
 	CUDA_SAFE_CALL(cudaMalloc((void **)&d_data, count_data * sizeof(unsigned)));
+	#ifdef TRACE_DEVICE_ALLOCATIONS
+		printf(" at %p\n", d_data);
+	#endif
 	return d_data;
 }
 
