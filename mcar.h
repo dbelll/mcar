@@ -13,6 +13,7 @@
 #pragma mark Problem Constants
 
 #define BLOCK_SIZE 64
+#define CALC_ALL_BLOCK_SIZE 128
 
 #define MIN_X -1.2f
 #define MAX_X 0.5f
@@ -22,18 +23,26 @@
 // parameters for calculating agent quality
 // The fine division is used for recording quality in AGENT_DATA and for testing if competition
 // winner is better than current best.
-#define DIV_X 0.020
-#define DIV_VEL 0.002
-#define NUM_X_DIV ((unsigned)(1.5f  + (MAX_X - MIN_X) / DIV_X))
-#define NUM_VEL_DIV ((unsigned)(1.5f + (MAX_VEL - MIN_VEL) / DIV_VEL))
+#define NUM_X_DIV 64
+#define NUM_VEL_DIV 64
+#define DIV_X ((float)((MAX_X - MIN_X) / (1.0f + NUM_X_DIV)))
+#define DIV_VEL (MAX_VEL - MIN_VEL)/(1.0f + NUM_VEL_DIV);
+//#define DIV_X 0.020
+//#define DIV_VEL 0.002
+//#define NUM_X_DIV ((unsigned)(1.5f  + (MAX_X - MIN_X) / DIV_X))
+//#define NUM_VEL_DIV ((unsigned)(1.5f + (MAX_VEL - MIN_VEL) / DIV_VEL))
+
 #define NUM_TOT_DIV (NUM_X_DIV * NUM_VEL_DIV)
 
-
 // The crude divs are  used when testing all agents when compete = no
-#define CRUDE_DIV_X 0.100
-#define CRUDE_DIV_VEL 0.0100
-#define CRUDE_NUM_X_DIV ((unsigned)(1.5f  + (MAX_X - MIN_X) / CRUDE_DIV_X))
-#define CRUDE_NUM_VEL_DIV ((unsigned)(1.5f + (MAX_VEL - MIN_VEL) / CRUDE_DIV_VEL))
+#define CRUDE_NUM_X_DIV 12
+#define CRUDE_NUM_VEL_DIV 12
+#define CRUDE_DIV_X ((float)((MAX_X - MIN_X) / (1.0f + NUM_X_DIV)))
+#define CRUDE_DIV_VEL (MAX_VEL - MIN_VEL)/(1.0f + NUM_VEL_DIV);
+//#define CRUDE_DIV_X 0.100
+//#define CRUDE_DIV_VEL 0.0100
+//#define CRUDE_NUM_X_DIV ((unsigned)(1.5f  + (MAX_X - MIN_X) / CRUDE_DIV_X))
+//#define CRUDE_NUM_VEL_DIV ((unsigned)(1.5f + (MAX_VEL - MIN_VEL) / CRUDE_DIV_VEL))
 #define CRUDE_NUM_TOT_DIV (CRUDE_NUM_X_DIV * CRUDE_NUM_VEL_DIV)
 
 

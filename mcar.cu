@@ -1844,7 +1844,7 @@ __global__ void calc_quality_kernel(unsigned iBest, unsigned maxSteps, float *d_
 
 	//    ... state based on thread and block indexes		**TODO this can be modified to have larger blocks of threads
 	s_s[idx] = MIN_X + DIV_X * idx;
-	s_s[idx + BLOCK_SIZE] = MIN_VEL + DIV_VEL * blockIdx.x;
+	s_s[idx + BLOCK_SIZE] = MIN_VEL +  blockIdx.x * DIV_VEL;
 
 	unsigned t;
 	unsigned action;
@@ -1873,10 +1873,17 @@ __global__ void calc_all_quality_kernel(unsigned maxSteps, float *d_steps)
 	
 	// setup values in shared memory...
 	//    ... first agent weights
+	unsigned x_div_count = iGlobal % CRUDE_NUM_X_DIV;
+	unsigned vel_div_count = iGlobal / CRUDE_NUM_X_DIV;
+	
 	if (idx < dc_p.num_wgts) s_theta[idx] = dc_ag.theta[ag + idx * dc_p.agents];
 	//    ... then the state based on the x-dimension
-	s_s[idx] = MIN_X + CRUDE_DIV_X * idx;
-	s_s[idx + BLOCK_SIZE] = MIN_VEL + CRUDE_DIV_VEL * blockIdx.x;
+//	s_s[idx] = MIN_X + CRUDE_DIV_X * idx;
+//	s_s[idx + BLOCK_SIZE] = MIN_VEL + blockIdx.x * CRUDE_DIV_VEL;
+	s_s[idx] = MIN_X + x_div_count * CRUDE_DIV_X;
+	s_s[idx + BLOCK_SIZE] = MIN_VEL + vel_div_count * CRUDE_DIV_VEL;
+
+	__syncthreads();
 	
 	unsigned t;
 	unsigned action;
@@ -1949,11 +1956,16 @@ unsigned calc_all_agents_quality(unsigned t, AGENT_DATA *agGPU, float *d_steps)
 
 	// *** TODO increase block dimension to at least 32, calculate the x and velocity values in the kernel,
 	// instead of just using the thread and block indexes
-	dim3 blockDim(CRUDE_NUM_X_DIV);
-	dim3 gridDim(CRUDE_NUM_VEL_DIV, _p.agents);
+	dim3 blockDim(CRUDE_NUM_X_DIV * CRUDE_NUM_VEL_DIV);
+	dim3 gridDim(1, _p.agents);
+//	dim3 blockDim(CRUDE_NUM_X_DIV * CRUDE_NUM_VEL_DIV);
+//	dim3 gridDim(1, _p.agents);
 
 	//	printf("about to call calc_all_quality_kernel wiht block size (%d x %d) grid size (%d x %d)\n", blockDim.x, blockDim.y, gridDim.x, gridDim.y);
+//	PRE_KERNEL2(
+	PRE_KERNEL("calc_all_quality_kernel");
 	calc_all_quality_kernel<<<gridDim, blockDim>>>(MAX_STEPS_FOR_QUALITY, d_steps);
+	POST_KERNEL("calc_all_quality_kernel");
 	
 //	device_dumpf("d_steps", d_steps, _p.agents, NUM_TOT_DIV);
 	
@@ -1967,7 +1979,7 @@ unsigned calc_all_agents_quality(unsigned t, AGENT_DATA *agGPU, float *d_steps)
 //	blockDim.x = 64;
 	gridDim.x = 1 + (_p.agents - 1) / BLOCK_SIZE;
 	gridDim.y = 1;
-	PRE_KERNEL2("copy_fitness_to_agent_kernel", blockDim, gridDim);
+	PRE_KERNEL("copy_fitness_to_agent_kernel");
 	copy_fitness_to_agent_kernel<<<gridDim, blockDim>>>(d_steps);
 	POST_KERNEL("copy_fitness_to_agent_kernel");
 	
@@ -2233,7 +2245,9 @@ void run_GPU(AGENT_DATA *agGPU)
 		// do some learning
 		CUDA_EVENTN_START(0);
 //		learn_kernel<<<gridDim, blockDim>>>(_p.chunk_interval, isRestart);
+		PRE_KERNEL("learn_kernel");
 		learn_kernel<<<gridDim, blockDim>>>(_p.test_interval);
+		POST_KERNEL("learn_kernel");
 		CUDA_EVENTN_STOP(timeLearn, 0);		
 //		dump_agentsGPU("after learning session", agGPU);
 		
@@ -2242,7 +2256,9 @@ void run_GPU(AGENT_DATA *agGPU)
 		if (_p.share_compete) {
 //				printf("running competition...");
 			CUDA_EVENTN_START(0);
+			PRE_KERNEL2("test_kernel3", test3BlockDim, test3GridDim);
 			test_kernel3<<<test3GridDim, test3BlockDim>>>(d_wins);
+			POST_KERNEL("test_kernel3");
 			CUDA_EVENTN_STOP(timeTest, 0);
 //				dump_agentsGPU("after testing, before sharing", agGPU);
 
