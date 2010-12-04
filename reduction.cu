@@ -704,12 +704,14 @@ __host__ float clean_reduce(float *d_data, unsigned n)
 	dim3 blockDim(BLOCK_SIZE);
 	dim3 gridDim(1);
 	unsigned reps = 1 + (n-1)/BLOCK_SIZE;
+	static float *d_sum = NULL;
+	if(!d_sum) d_sum = device_allocf(1);
 	
 	//printf("clean_reduce...\n");
 
 	//device_dumpf("agent fitness values on device", d_data, 1, n);
 
-	float *d_sum = device_allocf(1);
+//	float *d_sum = device_allocf(1);
 
 	//printf("   allocated room for sum on device\n");
 
@@ -725,7 +727,7 @@ __host__ float clean_reduce(float *d_data, unsigned n)
 
 	//printf("   sum is %f\n", sum);
 
-	cudaFree(d_sum);
+//	cudaFree(d_sum);
 
 	//	printf("now exiting clean_reduce_kernel\n");
 	return sum;
