@@ -209,8 +209,9 @@ DUAL_PREFIX float calc_Q2(float *s, unsigned a, float *theta, unsigned stride_th
 }
 
 
-// state and theta arrays have stride of 1
-DUAL_PREFIX float calc_Q3(float *s, unsigned a, float *theta, unsigned num_hidden, float *activation)
+// state array has stride of stride_s
+// theta array has stride of 1
+DUAL_PREFIX float calc_Q3(float *s, unsigned a, float *theta, unsigned num_hidden, float *activation, unsigned stride_s)
 {
 	// adjust theta to point to beginning of this action's weights
 	theta += iActionStart(a, 1, num_hidden);
@@ -228,7 +229,8 @@ DUAL_PREFIX float calc_Q3(float *s, unsigned a, float *theta, unsigned num_hidde
 		
 		// next add in the contributions for the state input nodes
 		for (int k = 0; k < STATE_SIZE; k++) {
-			in += theta[iBias + (1+k)] * s[k*BLOCK_SIZE];
+//			in += theta[iBias + (1+k)] * s[k*BLOCK_SIZE];
+			in += theta[iBias + (1+k)] * s[k*stride_s];
 		}
 		
 		// apply sigmoid and accumulate in the result
@@ -237,7 +239,8 @@ DUAL_PREFIX float calc_Q3(float *s, unsigned a, float *theta, unsigned num_hidde
 		result += theta[iOutputBias + (1+j)] * in;
 
 #ifdef DEBUG_CALC_Q
-		printf("calc_Q for state (%9.4f, %9.4f) and action %d ... ", s[0], s[BLOCK_SIZE], a);
+		printf("calc_Q for state (%9.4f, %9.4f) and action %d ... ", s[0], s[stride_s], a);
+//		printf("calc_Q for state (%9.4f, %9.4f) and action %d ... ", s[0], s[BLOCK_SIZE], a);
 //		printf("input to hidden node %d is %9.4f and activation is %9.4f\n", j, in, activation[j*stride]);
 #endif
 	}
@@ -610,13 +613,14 @@ DUAL_PREFIX float best_action2(float *s, unsigned *pAction, float *theta, unsign
 	return bestQ;
 }
 
-DUAL_PREFIX float best_action3(float *s, unsigned *pAction, float *theta, unsigned num_hidden, float *activation)
+// theta has stride of 1 and state has stride of stride_s
+DUAL_PREFIX float best_action3(float *s, unsigned *pAction, float *theta, unsigned num_hidden, float *activation, unsigned stride_s)
 {
 	// calculate Q value for each action
 	unsigned best_action = 0;
-	float bestQ = calc_Q3(s, 0, theta, num_hidden, activation);
+	float bestQ = calc_Q3(s, 0, theta, num_hidden, activation, stride_s);
 	for (int k = 1; k < NUM_ACTIONS; k++) {
-		float tempQ = calc_Q3(s, k, theta, num_hidden, activation);
+		float tempQ = calc_Q3(s, k, theta, num_hidden, activation, stride_s);
 		if (tempQ > bestQ) {
 			bestQ = tempQ;
 			best_action = k;
@@ -1849,7 +1853,7 @@ __global__ void calc_quality_kernel(unsigned iBest, unsigned maxSteps, float *d_
 	unsigned t;
 	unsigned action;
 	for (t = 0; t < maxSteps; t++) {
-		best_action3(s_s+idx, &action, s_theta, dc_p.hidden_nodes, NULL);
+		best_action3(s_s+idx, &action, s_theta, dc_p.hidden_nodes, NULL, BLOCK_SIZE);
 		take_action(s_s+idx, action, s_s+idx, BLOCK_SIZE, dc_accel);
 		if (terminal_state(s_s+idx)) break;
 	}
@@ -1865,11 +1869,11 @@ __global__ void calc_quality_kernel(unsigned iBest, unsigned maxSteps, float *d_
 __global__ void calc_all_quality_kernel(unsigned maxSteps, float *d_steps)
 {
 	unsigned idx = threadIdx.x;
-	unsigned iGlobal = idx + blockIdx.x * blockDim.x;
+	unsigned iGlobal = threadIdx.x + blockIdx.x * blockDim.x;
 	unsigned ag = blockIdx.y;
 	
-	__shared__ float s_theta[BLOCK_SIZE];
-	__shared__ float s_s[2*BLOCK_SIZE];
+	__shared__ float s_theta[MAX_NUM_WGTS];
+	__shared__ float s_s[2*CALC_ALL_BLOCK_SIZE];
 	
 	// setup values in shared memory...
 	//    ... first agent weights
@@ -1881,15 +1885,15 @@ __global__ void calc_all_quality_kernel(unsigned maxSteps, float *d_steps)
 //	s_s[idx] = MIN_X + CRUDE_DIV_X * idx;
 //	s_s[idx + BLOCK_SIZE] = MIN_VEL + blockIdx.x * CRUDE_DIV_VEL;
 	s_s[idx] = MIN_X + x_div_count * CRUDE_DIV_X;
-	s_s[idx + BLOCK_SIZE] = MIN_VEL + vel_div_count * CRUDE_DIV_VEL;
+	s_s[idx + CALC_ALL_BLOCK_SIZE] = MIN_VEL + vel_div_count * CRUDE_DIV_VEL;
 
 	__syncthreads();
 	
 	unsigned t;
 	unsigned action;
 	for (t = 0; t < maxSteps; t++) {
-		best_action3(s_s+idx, &action, s_theta, dc_p.hidden_nodes, NULL);
-		take_action(s_s+idx, action, s_s+idx, BLOCK_SIZE, dc_accel);
+		best_action3(s_s+idx, &action, s_theta, dc_p.hidden_nodes, NULL, CALC_ALL_BLOCK_SIZE);
+		take_action(s_s+idx, action, s_s+idx, CALC_ALL_BLOCK_SIZE, dc_accel);
 		if (terminal_state(s_s+idx)) break;
 	}
 	d_steps[ag * CRUDE_NUM_TOT_DIV + iGlobal] = (float)t;
@@ -1954,10 +1958,11 @@ unsigned calc_all_agents_quality(unsigned t, AGENT_DATA *agGPU, float *d_steps)
 	static int iOldBest = -1;
 	static float oldBestQuality = BIG_FLOAT;
 
-	// *** TODO increase block dimension to at least 32, calculate the x and velocity values in the kernel,
-	// instead of just using the thread and block indexes
-	dim3 blockDim(CRUDE_NUM_X_DIV * CRUDE_NUM_VEL_DIV);
-	dim3 gridDim(1, _p.agents);
+	// total x coordinate is the index for the point in state space,
+	// the block's y dimension is the agent number
+	dim3 blockDim(CALC_ALL_BLOCK_SIZE);
+	dim3 gridDim(1 + (CRUDE_NUM_TOT_DIV-1)/CALC_ALL_BLOCK_SIZE, _p.agents);
+
 //	dim3 blockDim(CRUDE_NUM_X_DIV * CRUDE_NUM_VEL_DIV);
 //	dim3 gridDim(1, _p.agents);
 
