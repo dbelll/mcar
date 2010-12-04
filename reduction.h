@@ -37,6 +37,7 @@ __host__ void vsum(float *x, float *y, unsigned n, unsigned stride_y);
  *	in pd_mincol.  The stride for both *pd_minval and *pd_mincol is the return value.
  */
 __host__ unsigned row_argmin(float *d_data, unsigned cols, unsigned rows, float **pd_minval, unsigned **pd_mincol);
+__host__ unsigned row_argmin2(float *d_data, unsigned cols, unsigned rows, float *d_minval, unsigned *d_mincol);
 __host__ unsigned row_argmax(float *d_data, unsigned cols, unsigned rows, float **pd_minval, unsigned **pd_mincol);
 
 #define BIG_FLOAT 9.99e49

@@ -527,6 +527,70 @@ __host__ unsigned row_argmin(float *d_data, unsigned cols, unsigned rows, float 
 	return col_after_one;
 }
 
+
+// same as row_argmin, but the device memory for the minimum values and minimum column are provided by the caller
+__host__ unsigned row_argmin2(float *d_data, unsigned cols, unsigned rows, float *d_minval, unsigned *d_mincol)
+{
+	int stride = 1;
+	int orig_cols = cols;
+	dim3 blockDim(BLOCK_SIZE);
+	dim3 gridDim;
+	
+	// allocate the output arrays
+	unsigned col_after_one = 1 + (cols-1)/(2*BLOCK_SIZE);
+//	*pd_minval = (float *)device_allocf(col_after_one * rows);
+//	*pd_mincol = (unsigned *)device_allocui(col_after_one * rows);
+//	float *d_minval = *pd_minval;
+//	unsigned *d_mincol = *pd_mincol;
+	
+	unsigned firstTimeThrough = 1;
+	while (cols > 1) {
+		// each block will handle the reduction of 2*BLOCK_SIZE columns
+		// values to be reduced are separated by stride memory locations
+		gridDim.x = 1 + (cols-1)/(2*BLOCK_SIZE);
+		if (gridDim.x > 65535) printf("[ERROR] Too many columns for row_argmin\n");
+		gridDim.y = rows;
+		
+		if (firstTimeThrough) {
+			// reduce the values in d_data and store the results in *d_min and put the indexes in *d_mincol
+			unsigned outCols = 1 + (cols-1) / (2*BLOCK_SIZE);
+#ifdef __DEBUG_REDUCTION__
+			//			printf("argmin_kernel, gridDim=(%dx%d), blockDim=(%dx%d), cols=%d, stride=%d, outCols = %d\n", gridDim.x, gridDim.y, blockDim.x, blockDim.y, cols, stride, outCols);
+#endif
+			argmin_kernel<<<gridDim, blockDim>>>(d_data, cols, stride, d_minval, d_mincol, outCols);
+#ifdef __DEBUG_REDUCTION__
+			device_dumpf("minvals after argmin_kernel", d_minval, rows, col_after_one);
+			device_dumpui("mincols after argmin_kernel", d_mincol, rows, col_after_one);
+#endif
+		}else {
+			// reduce the values in *d_min and indexes in *d_mincol destructively
+#ifdef __DEBUG_REDUCTION__
+			printf("argmin_kernel2, gridDim=(%dx%d), blockDim=(%dx%d), cols=%d, stride=%d, orig_cols = %d\n", gridDim.x, gridDim.y, blockDim.x, blockDim.y, cols, stride, orig_cols);
+#endif
+			argmin_kernel2<<<gridDim, blockDim>>>(d_minval, d_mincol, cols, stride, orig_cols);
+#ifdef __DEBUG_REDUCTION__
+			device_dumpf("minvals after argmin_kernel2", d_minval, rows, orig_cols);
+			device_dumpui("mincols after argmin_kernel2", d_mincol, rows, orig_cols);
+#endif
+		}
+		
+		CUDA_SAFE_CALL(cudaThreadSynchronize());
+		CUT_CHECK_ERROR("arg_min_kernel execution failed");
+		
+		cols = 1 + (cols-1) / (2*BLOCK_SIZE);
+		
+		if (firstTimeThrough) {
+			firstTimeThrough = 0;
+			orig_cols = cols;
+		}else {
+			stride *= 2*BLOCK_SIZE;
+		}
+	}
+	return col_after_one;
+}
+
+
+
 __host__ unsigned row_argmax(float *d_data, unsigned cols, unsigned rows, float **pd_minval, unsigned **pd_mincol)
 {
 	int stride = 1;

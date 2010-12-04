@@ -1,6 +1,6 @@
 #!/bin/bash
 # Testing script for resonance computer
-_time="--TIME_STEPS=1048576"
+_time="--TIME_STEPS=262144"
 _groups="--AGENT_GROUP_SIZE=2048"
 _restart="--RESTART_INTERVAL=1024"
 _test="--TEST_INTERVAL=1024 --TEST_REPS=16 --TEST_MAX=250"
@@ -9,7 +9,7 @@ _theta="--INIT_THETA_MIN=-0.10 --INIT_THETA_MAX=0.10"
 
 _params="--ALPHA=0.20 --EPSILON=0.10 --GAMMA=0.95 --LAMBDA=0.2"
 
-_location="./bin/linux/release"
+_location="./bin/darwin/release"
 
 _h="--HIDDEN_NODES=1"
 

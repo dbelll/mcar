@@ -1931,9 +1931,18 @@ float calc_agent_quality(AGENT_DATA *agGPU, unsigned iBest, float *d_steps, unsi
 }
 
 
+static float *d_bestVal = NULL;
+static unsigned *d_iBest = NULL;
+static unsigned *h_iBest = NULL;
+
 // calc the quality value for all agents
 unsigned calc_all_agents_quality(unsigned t, AGENT_DATA *agGPU, float *d_steps)
 {
+	unsigned best_size = 1 + (_p.agents - 1)/(2*BLOCK_SIZE);
+	if (NULL == d_bestVal) d_bestVal = (float *)device_allocf(best_size);
+	if (NULL == d_iBest) d_iBest = (unsigned *)device_allocui(best_size);
+	if (NULL == h_iBest) h_iBest = (unsigned *)malloc(best_size * sizeof(unsigned));
+
   //	printf("[calc_all_agents_quality at time step %d\n", t);
 	static int iOldBest = -1;
 	static float oldBestQuality = BIG_FLOAT;
@@ -1952,8 +1961,10 @@ unsigned calc_all_agents_quality(unsigned t, AGENT_DATA *agGPU, float *d_steps)
 	
 //	device_dumpf("d_steps, after row reduce", d_steps, _p.agents, NUM_TOT_DIV);
 
-	// increase BLOCK_SIZE for this kernel
+	// increase BLOCK_SIZE for this kernel (?)
+	
 	blockDim.x = BLOCK_SIZE;
+//	blockDim.x = 64;
 	gridDim.x = 1 + (_p.agents - 1) / BLOCK_SIZE;
 	gridDim.y = 1;
 	PRE_KERNEL2("copy_fitness_to_agent_kernel", blockDim, gridDim);
@@ -1963,29 +1974,28 @@ unsigned calc_all_agents_quality(unsigned t, AGENT_DATA *agGPU, float *d_steps)
 //	dump_agentsGPU("after copy_fitness_to_agent", agGPU);
 	
 	// determine the best fitness value
-	float *d_bestVal;
-	unsigned *d_iBest;
-	row_argmin(agGPU->fitness, _p.agents, 1, &d_bestVal, &d_iBest);
+	row_argmin2(agGPU->fitness, _p.agents, 1, d_bestVal, d_iBest);
 	
 	// see if the best agent is a new one
-	unsigned iBest;
+//	unsigned iBest;
 	unsigned newBestFlag = 0;
-	CUDA_SAFE_CALL(cudaMemcpy(&iBest, d_iBest, sizeof(unsigned), cudaMemcpyDeviceToHost));
+//	printf("copying %d unsigned values from %p on device to %p on host\n", best_size, d_iBest, h_iBest);
+	CUDA_SAFE_CALL(cudaMemcpy(h_iBest, d_iBest, best_size * sizeof(unsigned), cudaMemcpyDeviceToHost));
 	
 	//	printf("agent %d has the best fitness\n", iBest);
 	
-	if (iBest != iOldBest) {
+	if (h_iBest[0] != iOldBest) {
 		// we have a possible new best agent!
 		// calc the accurate fitness for iBest
-		float iBestQuality = calc_agent_quality(agGPU, iBest, d_steps, FINAL_QUALITY_MAX_STEPS);
+		float iBestQuality = calc_agent_quality(agGPU, h_iBest[0], d_steps, FINAL_QUALITY_MAX_STEPS);
 		if (iBestQuality < oldBestQuality) {
 			// we really do have a new best agent
 //			printf("new best with quality of %9.1f, old quality was %9.1f\n", iBestQuality, oldBestQuality);
 			newBestFlag = 1;
-			iOldBest = iBest;
+			iOldBest = h_iBest[0];
 			oldBestQuality = iBestQuality;
-			if (_p.dump_all_winners) dump_one_agentGPU("new best agent", agGPU, iBest);
-			add_to_GPU_result_list(agGPU, iBest, t);
+			if (_p.dump_all_winners) dump_one_agentGPU("new best agent", agGPU, h_iBest[0]);
+			add_to_GPU_result_list(agGPU, h_iBest[0], t);
 		}else {
 			// the reigning best agent is still the best, but it's fitness has been over-written
 			// in agGPU.  This is not a problem except when the agGPU fitness is printed it needs
@@ -2006,14 +2016,14 @@ unsigned calc_all_agents_quality(unsigned t, AGENT_DATA *agGPU, float *d_steps)
 		
 		//		printf("avg_fitness is %f and iBest is %d\n", avg_fitness, iBest);
 		//		device_dumpf("fitness values", agGPU->fitness, 1, _p.agents);
-		share_best_kernel<<<gridDim, blockDim>>>(agGPU->fitness, avg_fitness, iBest, 0);
+		share_best_kernel<<<gridDim, blockDim>>>(agGPU->fitness, avg_fitness, h_iBest[0], 0);
 		POST_KERNEL("share_best_kernel");
 		
 //		dump_agentsGPU("after share_best_kernel", agGPU);
 	}
-	deviceFree(d_bestVal);
-	deviceFree(d_iBest);
-	return iBest;
+//	deviceFree(d_bestVal);
+//	deviceFree(d_iBest);
+	return h_iBest[0];
 }
 
 

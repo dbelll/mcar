@@ -180,7 +180,8 @@ void PRINT_TIME(float time, char *message);
 
 #ifdef __POST_KERNEL_ON
 
-#define POST_KERNEL(str) CUT_CHECK_ERROR(#str" execution failed!!");
+#define POST_KERNEL(str)	CUT_CHECK_ERROR(#str" execution failed!!\n");	\
+							printf(#str" execution succeeded\n")
 
 #else
 
