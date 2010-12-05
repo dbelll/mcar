@@ -2356,12 +2356,12 @@ void run_GPU(AGENT_DATA *agGPU)
 //				dump_agentsGPU("after testing, before sharing", agGPU);
 
 			CUDA_EVENTN_START(0)
-			share_after_competition(i * _p.test_interval, agGPU, &iBest, d_wins, d_agent_scores, d_steps);
+			share_after_competition((i+1) * _p.test_interval, agGPU, &iBest, d_wins, d_agent_scores, d_steps);
 			CUDA_EVENTN_STOP(timeShare, 0);
 //				dump_agentsGPU("after sharing", agGPU);
 		}else if (_p.share_fitness) {
 			CUDA_EVENTN_START(0)
-			iBest = calc_all_agents_quality(i * _p.test_interval, agGPU, d_steps);
+			iBest = calc_all_agents_quality((i+1) * _p.test_interval, agGPU, d_steps);
 			CUDA_EVENTN_STOP(timeCalcFitness, 0);
 //				dump_agentsGPU("after sharing", agGPU);
 		}

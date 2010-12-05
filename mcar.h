@@ -13,7 +13,7 @@
 #pragma mark Problem Constants
 
 #define LEARN_BLOCK_SIZE 64				// used for learning kernel
-#define TEST3_BLOCK_SIZE 128		// used for test_kernel3 which runs the competition
+#define TEST3_BLOCK_SIZE 256			// used for test_kernel3 which runs the competition
 #define CALC_QUALITY_BLOCK_SIZE 512		// used for calc_all_quality kernel
 #define SHARE_BEST_BLOCK_SIZE 512		// used for share_best_kernel
 
