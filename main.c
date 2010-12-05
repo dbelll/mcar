@@ -27,10 +27,11 @@ void display_help()
 	printf("  --AGENT_GROUP_SIZE    size of agent groups that will communicate\n");
 	
 //	printf("  --SHARING_INTERVAL    number of time steps between agent communication\n");
-	printf("  --SHARE_BEST_PCT		the probability of being replace by the best agent when sharing\n");
+	printf("  --SHARE_BEST_PCT		the probability of being replace by the best agent when sharing (new best agent)\n");
+	printf("  --SHARE_ALWAYS_PCT	the probability of being replace by the best agent when sharing\n");
 	printf("  --SHARE_COMPETE		flag to indicate that competition is used for sharing\n");
 	printf("  --SHARE_FITNESS		flag to indicate that fitness is used for sharing\n");
-	printf("  --SHARE_ALWAYS		always share best agent with losers\n");
+//	printf("  --SHARE_ALWAYS		always share best agent with losers\n");
 	
 	printf("  --ALPHA               float value for alpha, the learning rate parameter\n");
 	printf("  --EPSILON             float value for epsilon, the exploration parameter\n");
@@ -72,9 +73,10 @@ PARAMS read_params(int argc, const char **argv)
 	p.agents = p.trials * p.agent_group_size;
 //	p.sharing_interval = GET_PARAM("SHARING_INTERVAL", p.time_steps);
 	p.share_best_pct = GET_PARAMF("SHARE_BEST_PCT", DEFAULT_SHARE_BEST_PCT);
+	p.share_always_pct = GET_PARAMF("SHARE_ALWAYS_PCT", DEFAULT_SHARE_ALWAYS_PCT);
 	p.share_compete = PARAM_PRESENT("SHARE_COMPETE");
 	p.share_fitness = PARAM_PRESENT("SHARE_FITNESS");
-	p.share_always = PARAM_PRESENT("SHARE_ALWAYS");
+//	p.share_always = PARAM_PRESENT("SHARE_ALWAYS");
 	p.copy_alpha_multiplier = GET_PARAMF("COPY_ALPHA_MULTIPLIER", 0.5f);
 	
 //	// set sharing interval to total time steps if only one agent, or if it exceeds the time steps
@@ -170,12 +172,12 @@ PARAMS read_params(int argc, const char **argv)
 //	p.state_size = STATE_SIZE;		// x and x'
 //	p.num_actions = NUM_ACTIONS;	// left, none, and right
 	
-	printf("[MCAR][HIDDEN_NODES%3d[TRIALS%7d][TIME_STEPS%7d][SHARE_BEST_PCT%7.4f][COPY_ALPHA_MULTIPLIER%7.4f][AGENT_GROUP_SIZE%7d][ALPHA%7.4f]"
-		   "[EPSILON%7.4f][GAMMA%7.4f][LAMBDA%7.4f][TEST_INTERVAL%7d][TEST_REPS%7d][TEST_MAX%7d][RESTART_INTERVAL%7d][CHUNK_INTERVAL%7d]", NUM_HIDDEN, p.trials, p.time_steps, p.share_best_pct, p.copy_alpha_multiplier, p.agent_group_size, p.alpha, p.epsilon, p.gamma, p.lambda, p.test_interval, p.test_reps, p.test_max, p.restart_interval, p.chunk_interval);
+	printf("[MCAR][HIDDEN_NODES%3d[TRIALS%7d][TIME_STEPS%7d][SHARE_BEST_PCT%7.4f][SHARE_ALWAYS_PCT%7.4f][COPY_ALPHA_MULTIPLIER%7.4f][AGENT_GROUP_SIZE%7d][ALPHA%7.4f]"
+		   "[EPSILON%7.4f][GAMMA%7.4f][LAMBDA%7.4f][TEST_INTERVAL%7d][TEST_REPS%7d][TEST_MAX%7d][RESTART_INTERVAL%7d][CHUNK_INTERVAL%7d]", NUM_HIDDEN, p.trials, p.time_steps, p.share_best_pct, p.share_always_pct, p.copy_alpha_multiplier, p.agent_group_size, p.alpha, p.epsilon, p.gamma, p.lambda, p.test_interval, p.test_reps, p.test_max, p.restart_interval, p.chunk_interval);
 
 	if (p.share_compete) printf("[SHARE_COMPETE]");
 	if (p.share_fitness) printf("[SHARE_FITNESS]");
-	if (p.share_always) printf("[SHARE_ALWAYS]");
+//	if (p.share_always) printf("[SHARE_ALWAYS]");
 	printf("\n");
 	
 	// aliases
