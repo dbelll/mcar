@@ -1786,7 +1786,8 @@ unsigned calc_all_agents_quality(unsigned t, AGENT_DATA *agGPU, float *d_steps)
 		printf("avg_fitness is %f and iBest is %d\n", avg_fitness, h_iBest[0]);
 		device_dumpf("fitness values", agGPU->fitness, 1, _p.agents);
 #endif
-		share_best_kernel<<<gridDim, blockDim>>>(agGPU->fitness, avg_fitness, h_iBest[0], 0, newBestFlag ? _p.share_best_pct : _p.share_always_pct);
+//		share_best_kernel<<<gridDim, blockDim>>>(agGPU->fitness, avg_fitness, h_iBest[0], 0, newBestFlag ? _p.share_best_pct : _p.share_always_pct);
+		share_best_kernel<<<gridDim, blockDim>>>(agGPU->fitness, avg_fitness, iOldBest, 0, newBestFlag ? _p.share_best_pct : _p.share_always_pct);
 		POST_KERNEL("share_best_kernel");
 		
 #ifdef VERBOSE
@@ -1908,9 +1909,7 @@ void share_after_competition(unsigned t, AGENT_DATA *agGPU, unsigned *pBest, flo
 	 
 	// if there is a new best agent, or if SHARE_ALWAYS is on, then share the 
 	if (newBestFlag || _p.share_always_pct > 0.0f) {
-//		printf("%d is the new best agent\n", *pBest);
-		
-		// *** TODO increase BLOCK_SIZE here
+		printf("%d is the new best agent\n", *pBest);
 		
 		dim3 blockDim(SHARE_BEST_BLOCK_SIZE);
 		dim3 gridDim(1 + (_p.agents-1)/SHARE_BEST_BLOCK_SIZE);
