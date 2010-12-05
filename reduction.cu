@@ -40,7 +40,7 @@ __global__ void row_reduction(float *g_data, int cols, int g_stride, int orig_co
 	g_data += orig_cols * blockIdx.y;
 	
   // Define shared memory
-  __shared__ float s_data[BLOCK_SIZE];
+  __shared__ float s_data[__REDUCTION_BLOCK_SIZE];
 
 
   // Load the shared memory (the first reduction occurs while loading shared memory)
@@ -51,7 +51,7 @@ __global__ void row_reduction(float *g_data, int cols, int g_stride, int orig_co
   // index into global memory for this thread
   int g_i = g_stride * (s_i + (blockIdx.x * blockDim.x) * 2);
 
-  int half = BLOCK_SIZE;   // half equals 1/2 the number of values left to be reduced
+  int half = __REDUCTION_BLOCK_SIZE;   // half equals 1/2 the number of values left to be reduced
 
   // if g_i points to real data copy it to shared memory, otherwise plug in a 0.0 value
 //  if(g_i < cols*g_stride)
@@ -60,7 +60,7 @@ __global__ void row_reduction(float *g_data, int cols, int g_stride, int orig_co
   else
     s_data[s_i] = 0.0;
 
-  // if the value a BLOCK_SIZE away is real data add it to shared
+  // if the value a __REDUCTION_BLOCK_SIZE away is real data add it to shared
 //  if((g_i + half*g_stride) < cols*g_stride)
   if((g_i + half*g_stride) < orig_cols)
     s_data[s_i] += g_data[g_i + half*g_stride];
@@ -88,7 +88,7 @@ __global__ void col_reduce_kernel(float *d_data, float *d_tot, unsigned cols, un
 	unsigned idx = threadIdx.x + blockIdx.x * blockDim.x;
 	if (idx >= cols) return;
 	
-	__shared__ float s_tot[BLOCK_SIZE];
+	__shared__ float s_tot[__REDUCTION_BLOCK_SIZE];
 	
 	// loop over each row and add to s_tot array
 	s_tot[idx] = d_data[idx];
@@ -105,7 +105,7 @@ __host__ float *col_reduce(float *d_data, float *d_tot, unsigned cols, unsigned 
 	if (!d_tot) d_tot = device_allocf(cols);
 	
 	// one thread per column
-	dim3 blockDim(BLOCK_SIZE);
+	dim3 blockDim(__REDUCTION_BLOCK_SIZE);
 	dim3 gridDim(1 + (blockDim.x-1)/cols);
 	
 	col_reduce_kernel<<<gridDim, blockDim>>>(d_data, d_tot, cols, rows);
@@ -118,7 +118,7 @@ __global__ void col_reduce_x_k_kernel(float *d_data, float *d_tot, unsigned cols
 	unsigned idx = threadIdx.x + blockIdx.x * blockDim.x;
 	if (idx >= cols) return;
 	
-	__shared__ float s_tot[BLOCK_SIZE];
+	__shared__ float s_tot[__REDUCTION_BLOCK_SIZE];
 	
 	// loop over each row and add to s_tot array
 	s_tot[idx] = d_data[idx];
@@ -135,7 +135,7 @@ __host__ float *col_reduce_x_k(float *d_data, float *d_tot, unsigned cols, unsig
 	if (!d_tot) d_tot = device_allocf(cols);
 	
 	// one thread per column
-	dim3 blockDim(BLOCK_SIZE);
+	dim3 blockDim(__REDUCTION_BLOCK_SIZE);
 	dim3 gridDim(1 + (blockDim.x-1)/cols);
 	
 	col_reduce_x_k_kernel<<<gridDim, blockDim>>>(d_data, d_tot, cols, rows, k);
@@ -153,22 +153,22 @@ __host__ void row_reduce(float *d_data, unsigned cols, unsigned rows)
   int stride = 1;
 	int orig_cols = cols;
 
-  dim3 blockDim(BLOCK_SIZE);
+  dim3 blockDim(__REDUCTION_BLOCK_SIZE);
   dim3 gridDim;  // calculated inside while loop below
 
   while(cols > 1){
   
   //
-  // Each invocation of the kernel will reduce ranges of 2 x BLOCK_SIZE values.
-  // If the vector size is more than 2 x BLOCK_SIZE, then the kernel must be called
+  // Each invocation of the kernel will reduce ranges of 2 x __REDUCTION_BLOCK_SIZE values.
+  // If the vector size is more than 2 x __REDUCTION_BLOCK_SIZE, then the kernel must be called
   // again.  Initially, the values to be reduced are next to each other, so g_stride
   // starts at 1.  On the second kernel invocation, the values to be summed are 
-  // (2*BLOCK_SIZE) elements apart.  On the 3rd invocation they are (2*BLOCK_SIZE)^2
-  // apart, etc.  g_stride is multipled by (2*BLOCK_SIZE) after each kernel invocation.
+  // (2*__REDUCTION_BLOCK_SIZE) elements apart.  On the 3rd invocation they are (2*__REDUCTION_BLOCK_SIZE)^2
+  // apart, etc.  g_stride is multipled by (2*__REDUCTION_BLOCK_SIZE) after each kernel invocation.
   // 
 
     // First, assume a one-dimensional grid of blocks
-    gridDim.x = 1 + (cols-1)/(2*BLOCK_SIZE);
+    gridDim.x = 1 + (cols-1)/(2*__REDUCTION_BLOCK_SIZE);
 	// y-dimension of grid is used for rows
     gridDim.y = rows;
 
@@ -193,10 +193,10 @@ __host__ void row_reduce(float *d_data, unsigned cols, unsigned rows)
 	CUT_CHECK_ERROR("Kernel execution failed");
 
     // calculate the number of values remaining.
-    cols = 1 + (cols-1)/(2*BLOCK_SIZE);
+    cols = 1 + (cols-1)/(2*__REDUCTION_BLOCK_SIZE);
 
     // adjust the distance between sub-total values
-    stride *= (2*BLOCK_SIZE);
+    stride *= (2*__REDUCTION_BLOCK_SIZE);
   }
 }
 
@@ -215,8 +215,8 @@ __global__ void argmin_kernel(float *g_data, int in_cols, int g_stride, float *d
 	d_mincol += out_cols * blockIdx.y;
 	
 	// Define shared memory
-	__shared__ float s_data[BLOCK_SIZE];
-	__shared__ unsigned s_index[BLOCK_SIZE];
+	__shared__ float s_data[__REDUCTION_BLOCK_SIZE];
+	__shared__ unsigned s_index[__REDUCTION_BLOCK_SIZE];
 
 
 	// Load the shared memory (the first reduction occurs while loading shared memory)
@@ -278,8 +278,8 @@ __global__ void argmin_kernel2(float *g_data, unsigned *g_index, int cols, int g
 	g_index += orig_cols * blockIdx.y;
 		
 	// Define shared memory
-	__shared__ float s_data[BLOCK_SIZE];
-	__shared__ unsigned s_index[BLOCK_SIZE];
+	__shared__ float s_data[__REDUCTION_BLOCK_SIZE];
+	__shared__ unsigned s_index[__REDUCTION_BLOCK_SIZE];
 
 
 	// Load the shared memory (the first reduction occurs while loading shared memory)
@@ -343,8 +343,8 @@ __global__ void argmax_kernel(float *g_data, int in_cols, int g_stride, float *d
 	d_mincol += out_cols * blockIdx.y;
 	
 	// Define shared memory
-	__shared__ float s_data[BLOCK_SIZE];
-	__shared__ unsigned s_index[BLOCK_SIZE];
+	__shared__ float s_data[__REDUCTION_BLOCK_SIZE];
+	__shared__ unsigned s_index[__REDUCTION_BLOCK_SIZE];
 
 
 	// Load the shared memory (the first reduction occurs while loading shared memory)
@@ -406,8 +406,8 @@ __global__ void argmax_kernel2(float *g_data, unsigned *g_index, int cols, int g
 	g_index += orig_cols * blockIdx.y;
 		
 	// Define shared memory
-	__shared__ float s_data[BLOCK_SIZE];
-	__shared__ unsigned s_index[BLOCK_SIZE];
+	__shared__ float s_data[__REDUCTION_BLOCK_SIZE];
+	__shared__ unsigned s_index[__REDUCTION_BLOCK_SIZE];
 
 
 	// Load the shared memory (the first reduction occurs while loading shared memory)
@@ -471,11 +471,11 @@ __host__ unsigned row_argmin(float *d_data, unsigned cols, unsigned rows, float 
 {
 	int stride = 1;
 	int orig_cols = cols;
-	dim3 blockDim(BLOCK_SIZE);
+	dim3 blockDim(__REDUCTION_BLOCK_SIZE);
 	dim3 gridDim;
 	
 	// allocate the output arrays
-	unsigned col_after_one = 1 + (cols-1)/(2*BLOCK_SIZE);
+	unsigned col_after_one = 1 + (cols-1)/(2*__REDUCTION_BLOCK_SIZE);
 	*pd_minval = (float *)device_allocf(col_after_one * rows);
 	*pd_mincol = (unsigned *)device_allocui(col_after_one * rows);
 	float *d_minval = *pd_minval;
@@ -485,13 +485,13 @@ __host__ unsigned row_argmin(float *d_data, unsigned cols, unsigned rows, float 
 	while (cols > 1) {
 		// each block will handle the reduction of 2*BLOCK_SIZE columns
 		// values to be reduced are separated by stride memory locations
-		gridDim.x = 1 + (cols-1)/(2*BLOCK_SIZE);
+		gridDim.x = 1 + (cols-1)/(2*__REDUCTION_BLOCK_SIZE);
 		if (gridDim.x > 65535) printf("[ERROR] Too many columns for row_argmin\n");
 		gridDim.y = rows;
 		
 		if (firstTimeThrough) {
 			// reduce the values in d_data and store the results in *d_min and put the indexes in *d_mincol
-			unsigned outCols = 1 + (cols-1) / (2*BLOCK_SIZE);
+			unsigned outCols = 1 + (cols-1) / (2*__REDUCTION_BLOCK_SIZE);
 #ifdef __DEBUG_REDUCTION__
 			//			printf("argmin_kernel, gridDim=(%dx%d), blockDim=(%dx%d), cols=%d, stride=%d, outCols = %d\n", gridDim.x, gridDim.y, blockDim.x, blockDim.y, cols, stride, outCols);
 #endif
@@ -515,13 +515,13 @@ __host__ unsigned row_argmin(float *d_data, unsigned cols, unsigned rows, float 
 		CUDA_SAFE_CALL(cudaThreadSynchronize());
 		CUT_CHECK_ERROR("arg_min_kernel execution failed");
 		
-		cols = 1 + (cols-1) / (2*BLOCK_SIZE);
+		cols = 1 + (cols-1) / (2*__REDUCTION_BLOCK_SIZE);
 		
 		if (firstTimeThrough) {
 			firstTimeThrough = 0;
 			orig_cols = cols;
 		}else {
-			stride *= 2*BLOCK_SIZE;
+			stride *= 2*__REDUCTION_BLOCK_SIZE;
 		}
 	}
 	return col_after_one;
@@ -533,11 +533,11 @@ __host__ unsigned row_argmin2(float *d_data, unsigned cols, unsigned rows, float
 {
 	int stride = 1;
 	int orig_cols = cols;
-	dim3 blockDim(BLOCK_SIZE);
+	dim3 blockDim(__REDUCTION_BLOCK_SIZE);
 	dim3 gridDim;
 	
 	// allocate the output arrays
-	unsigned col_after_one = 1 + (cols-1)/(2*BLOCK_SIZE);
+	unsigned col_after_one = 1 + (cols-1)/(2*__REDUCTION_BLOCK_SIZE);
 //	*pd_minval = (float *)device_allocf(col_after_one * rows);
 //	*pd_mincol = (unsigned *)device_allocui(col_after_one * rows);
 //	float *d_minval = *pd_minval;
@@ -547,13 +547,13 @@ __host__ unsigned row_argmin2(float *d_data, unsigned cols, unsigned rows, float
 	while (cols > 1) {
 		// each block will handle the reduction of 2*BLOCK_SIZE columns
 		// values to be reduced are separated by stride memory locations
-		gridDim.x = 1 + (cols-1)/(2*BLOCK_SIZE);
+		gridDim.x = 1 + (cols-1)/(2*__REDUCTION_BLOCK_SIZE);
 		if (gridDim.x > 65535) printf("[ERROR] Too many columns for row_argmin\n");
 		gridDim.y = rows;
 		
 		if (firstTimeThrough) {
 			// reduce the values in d_data and store the results in *d_min and put the indexes in *d_mincol
-			unsigned outCols = 1 + (cols-1) / (2*BLOCK_SIZE);
+			unsigned outCols = 1 + (cols-1) / (2*__REDUCTION_BLOCK_SIZE);
 #ifdef __DEBUG_REDUCTION__
 			//			printf("argmin_kernel, gridDim=(%dx%d), blockDim=(%dx%d), cols=%d, stride=%d, outCols = %d\n", gridDim.x, gridDim.y, blockDim.x, blockDim.y, cols, stride, outCols);
 #endif
@@ -577,13 +577,13 @@ __host__ unsigned row_argmin2(float *d_data, unsigned cols, unsigned rows, float
 		CUDA_SAFE_CALL(cudaThreadSynchronize());
 		CUT_CHECK_ERROR("arg_min_kernel execution failed");
 		
-		cols = 1 + (cols-1) / (2*BLOCK_SIZE);
+		cols = 1 + (cols-1) / (2*__REDUCTION_BLOCK_SIZE);
 		
 		if (firstTimeThrough) {
 			firstTimeThrough = 0;
 			orig_cols = cols;
 		}else {
-			stride *= 2*BLOCK_SIZE;
+			stride *= 2*__REDUCTION_BLOCK_SIZE;
 		}
 	}
 	return col_after_one;
@@ -595,11 +595,11 @@ __host__ unsigned row_argmax(float *d_data, unsigned cols, unsigned rows, float 
 {
 	int stride = 1;
 	int orig_cols = cols;
-	dim3 blockDim(BLOCK_SIZE);
+	dim3 blockDim(__REDUCTION_BLOCK_SIZE);
 	dim3 gridDim;
 	
 	// allocate the output arrays
-	unsigned col_after_one = 1 + (cols-1)/(2*BLOCK_SIZE);
+	unsigned col_after_one = 1 + (cols-1)/(2*__REDUCTION_BLOCK_SIZE);
 	*pd_minval = (float *)device_allocf(col_after_one * rows);
 	*pd_mincol = (unsigned *)device_allocui(col_after_one * rows);
 	float *d_minval = *pd_minval;
@@ -609,13 +609,13 @@ __host__ unsigned row_argmax(float *d_data, unsigned cols, unsigned rows, float 
 	while (cols > 1) {
 		// each block will handle the reduction of 2*BLOCK_SIZE columns
 		// values to be reduced are separated by stride memory locations
-		gridDim.x = 1 + (cols-1)/(2*BLOCK_SIZE);
+		gridDim.x = 1 + (cols-1)/(2*__REDUCTION_BLOCK_SIZE);
 		if (gridDim.x > 65535) printf("[ERROR] Too many columns for row_argmin\n");
 		gridDim.y = rows;
 		
 		if (firstTimeThrough) {
 			// reduce the values in d_data and store the results in *d_min and put the indexes in *d_mincol
-			unsigned outCols = 1 + (cols-1) / (2*BLOCK_SIZE);
+			unsigned outCols = 1 + (cols-1) / (2*__REDUCTION_BLOCK_SIZE);
 #ifdef __DEBUG_REDUCTION__
 			printf("argmin_kernel, gridDim=(%dx%d), blockDim=(%dx%d), cols=%d, stride=%d, outCols = %d\n", gridDim.x, gridDim.y, blockDim.x, blockDim.y, cols, stride, outCols);
 #endif
@@ -639,13 +639,13 @@ __host__ unsigned row_argmax(float *d_data, unsigned cols, unsigned rows, float 
 		CUDA_SAFE_CALL(cudaThreadSynchronize());
 		CUT_CHECK_ERROR("arg_min_kernel execution failed");
 		
-		cols = 1 + (cols-1) / (2*BLOCK_SIZE);
+		cols = 1 + (cols-1) / (2*__REDUCTION_BLOCK_SIZE);
 		
 		if (firstTimeThrough) {
 			firstTimeThrough = 0;
 			orig_cols = cols;
 		}else {
-			stride *= 2*BLOCK_SIZE;
+			stride *= 2*__REDUCTION_BLOCK_SIZE;
 		}
 	}
 	return col_after_one;
@@ -661,7 +661,7 @@ __global__ void vsum_kernel(float *d_x, float *d_y, unsigned n, unsigned stride_
 }
 __host__ void vsum(float *d_x, float *d_y, unsigned n, unsigned stride_y)
 {
-	dim3 blockDim(BLOCK_SIZE);
+	dim3 blockDim(__REDUCTION_BLOCK_SIZE);
 	dim3 gridDim(1 + (blockDim.x - 1)/n);
 	vsum_kernel<<<gridDim, blockDim>>>(d_x, d_y, n, stride_y);
 }
@@ -672,7 +672,7 @@ __global__ void clean_reduce_kernel(float *d_data, float *d_sum, unsigned n, uns
 	unsigned idx = threadIdx.x;
 	//if (idx >= n) return;
 	
-	__shared__ float s_data[BLOCK_SIZE];
+	__shared__ float s_data[__REDUCTION_BLOCK_SIZE];
 	
 
 	// first do a bunch of sums from global into shared memory
@@ -684,7 +684,7 @@ __global__ void clean_reduce_kernel(float *d_data, float *d_sum, unsigned n, uns
 	
 
 	// now do a reduction on the values in shared memory
-	unsigned half = BLOCK_SIZE/2;
+	unsigned half = __REDUCTION_BLOCK_SIZE/2;
 	while (half > 0) {
 		if (idx < half && (idx + half) < n) 
 			s_data[idx] += s_data[idx + half];
@@ -701,9 +701,9 @@ __global__ void clean_reduce_kernel(float *d_data, float *d_sum, unsigned n, uns
 */
 __host__ float clean_reduce(float *d_data, unsigned n)
 {
-	dim3 blockDim(BLOCK_SIZE);
+	dim3 blockDim(__REDUCTION_BLOCK_SIZE);
 	dim3 gridDim(1);
-	unsigned reps = 1 + (n-1)/BLOCK_SIZE;
+	unsigned reps = 1 + (n-1)/__REDUCTION_BLOCK_SIZE;
 	static float *d_sum = NULL;
 	if(!d_sum) d_sum = device_allocf(1);
 	

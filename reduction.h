@@ -7,6 +7,9 @@
  *
  */
 
+#define __REDUCTION_BLOCK_SIZE 256
+
+
 /*
  *	Reduce the rows of a two dimensional array, storing result in column 0
  *

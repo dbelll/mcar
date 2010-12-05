@@ -29,3 +29,18 @@ log time of tests to test data
 save best agent (or selected agent) weights after each test
 
 
+When calc'ing all agent's quality, instead of adding 0.5f to the division number, add a random value between 0.0 and 1.0
+
+In CALC_QUALITY kernels, is it better to have large block size and then calculate the x_div_num and _vel_div_num
+values, or is it better to have threadIdx.x = the x_div_num and blockIdx.x = vel_div_num
+
+Set alpha with a random distribution for copies of the best agent.  Some alphas can be larger
+than normal and some smaller. (Or even change lambda, wgts, or something else)
+
+
+Add a minimum fitness delta value so the best agent does not change unless the new agent's fitness exceeds
+current best by a certain threshold.
+
+Store the best agents weights in the GPU result data, and then let the agent continue to evolve.
+
+Add a separate share best % to be used when there is not a new best agent.

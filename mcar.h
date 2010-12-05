@@ -12,12 +12,14 @@
 #pragma mark -
 #pragma mark Problem Constants
 
-#define BLOCK_SIZE 64
-#define CALC_ALL_BLOCK_SIZE 128
+#define LEARN_BLOCK_SIZE 64				// used for learning kernel
+#define TEST3_BLOCK_SIZE 128		// used for test_kernel3 which runs the competition
+#define CALC_QUALITY_BLOCK_SIZE 512		// used for calc_all_quality kernel
+#define SHARE_BEST_BLOCK_SIZE 512		// used for share_best_kernel
 
-#define MIN_X -1.2f
+#define MIN_X (-1.2f)
 #define MAX_X 0.5f
-#define MIN_VEL -0.07f
+#define MIN_VEL (-0.07f)
 #define MAX_VEL 0.07f
 
 // parameters for calculating agent quality
@@ -25,8 +27,8 @@
 // winner is better than current best.
 #define NUM_X_DIV 64
 #define NUM_VEL_DIV 64
-#define DIV_X ((float)((MAX_X - MIN_X) / (1.0f + NUM_X_DIV)))
-#define DIV_VEL (MAX_VEL - MIN_VEL)/(1.0f + NUM_VEL_DIV);
+#define DIV_X ((MAX_X - MIN_X) / NUM_X_DIV)
+#define DIV_VEL ((MAX_VEL - MIN_VEL)/NUM_VEL_DIV);
 //#define DIV_X 0.020
 //#define DIV_VEL 0.002
 //#define NUM_X_DIV ((unsigned)(1.5f  + (MAX_X - MIN_X) / DIV_X))
@@ -37,8 +39,8 @@
 // The crude divs are  used when testing all agents when compete = no
 #define CRUDE_NUM_X_DIV 12
 #define CRUDE_NUM_VEL_DIV 12
-#define CRUDE_DIV_X ((float)((MAX_X - MIN_X) / (1.0f + NUM_X_DIV)))
-#define CRUDE_DIV_VEL (MAX_VEL - MIN_VEL)/(1.0f + NUM_VEL_DIV);
+#define CRUDE_DIV_X ((MAX_X - MIN_X) / CRUDE_NUM_X_DIV)
+#define CRUDE_DIV_VEL ((MAX_VEL - MIN_VEL)/CRUDE_NUM_VEL_DIV)
 //#define CRUDE_DIV_X 0.100
 //#define CRUDE_DIV_VEL 0.0100
 //#define CRUDE_NUM_X_DIV ((unsigned)(1.5f  + (MAX_X - MIN_X) / CRUDE_DIV_X))
@@ -65,15 +67,19 @@
 
 #define DEFAULT_TEST_REPS 10
 #define DEFAULT_TEST_MAX 1000
-#define MAX_FITNESS 9999
+#define MAX_FITNESS 9999 * CRUDE_NUM_TOT_DIV
 
 #define DEFAULT_HIDDEN_NODES 1
 
 #define STATE_SIZE 2
 #define NUM_ACTIONS 3
 #define SEEDS_PER_AGENT 4
-#define MAX_HIDDEN 6
-#define MAX_NUM_WGTS (NUM_ACTIONS * ((1 + STATE_SIZE) * MAX_HIDDEN + (1 + MAX_HIDDEN)))
+#define NUM_HIDDEN 1
+#define NUM_WGTS (NUM_ACTIONS * ((1 + STATE_SIZE) * NUM_HIDDEN + (1 + NUM_HIDDEN)))
+
+#if NUM_WGTS > CALC_QUALITY_BLOCK_SIZE
+#undef NUM_WGTS
+#endif
 
 
 /*
@@ -125,14 +131,14 @@ typedef struct{
 	unsigned chunks_per_test;	// calculated = test_interval / chunk_interval
 	unsigned chunks_per_restart;	// calculated = restart_interval / chunk_interval
 	
-	unsigned hidden_nodes;	// number of hidden nodes in the neural net used to calculate Q(s,a)
-	unsigned num_wgts;		// total number of weights for each action = 12*hidden_nodes + 3
-	unsigned num_actions;	// 3
-	unsigned state_size;	// 2 (x and x')
-
-	unsigned num_states;	// alternate names
+//	unsigned hidden_nodes;	// number of hidden nodes in the neural net used to calculate Q(s,a)
+//	unsigned num_wgts;		// total number of weights for each action = 12*hidden_nodes + 3
+//	unsigned num_actions;	// 3
+//	unsigned state_size;	// 2 (x and x')
+//
+//	unsigned num_states;	// alternate names
 	unsigned stride;
-	unsigned num_hidden;
+//	unsigned num_hidden;
 	
 	unsigned iActionStart[NUM_ACTIONS];
 	unsigned offsetToOutputBias;
@@ -196,8 +202,8 @@ void free_agentsCPU(AGENT_DATA *agCPU);
 void run_CPU(AGENT_DATA *cv);
 
 AGENT_DATA *initialize_agentsGPU(AGENT_DATA *agCPU);
-void dump_agentsGPU(const char *str, AGENT_DATA *agGPU);
-void dump_one_agentGPU(const char *str, AGENT_DATA *agGPU, unsigned ag);
+void dump_agentsGPU(const char *str, AGENT_DATA *agGPU, unsigned crude);
+void dump_one_agentGPU(const char *str, AGENT_DATA *agGPU, unsigned ag, unsigned crude);
 void free_agentsGPU(AGENT_DATA *agGPU);
 void run_GPU(AGENT_DATA *ag);
 

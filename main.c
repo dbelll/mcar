@@ -97,12 +97,12 @@ PARAMS read_params(int argc, const char **argv)
 	p.gamma = GET_PARAMF("GAMMA", DEFAULT_GAMMA);
 	p.lambda = GET_PARAMF("LAMBDA", DEFAULT_LAMBDA);
 	
-	p.hidden_nodes = GET_PARAM("HIDDEN_NODES", DEFAULT_HIDDEN_NODES);
-	if (p.hidden_nodes > MAX_HIDDEN){
-		printf("Requested hidden nodes exceeds the maximum\n");
-		exit(1);
-	}
-	p.num_wgts = NUM_ACTIONS * ((1 + STATE_SIZE) * p.hidden_nodes + (1 + p.hidden_nodes));
+//	p.hidden_nodes = GET_PARAM("HIDDEN_NODES", DEFAULT_HIDDEN_NODES);
+//	if (p.hidden_nodes > MAX_HIDDEN){
+//		printf("Requested hidden nodes exceeds the maximum\n");
+//		exit(1);
+//	}
+//	p.num_wgts = NUM_ACTIONS * ((1 + STATE_SIZE) * NUM_HIDDEN + (1 + p.hidden_nodes));
 	
 	p.run_on_CPU = GET_PARAM("RUN_ON_CPU", 0);
 	p.run_on_GPU = GET_PARAM("RUN_ON_GPU", 1);
@@ -115,7 +115,7 @@ PARAMS read_params(int argc, const char **argv)
 	p.test_interval = GET_PARAM("TEST_INTERVAL", p.time_steps);
 	p.test_reps = GET_PARAM("TEST_REPS", DEFAULT_TEST_REPS);
 	p.test_max = GET_PARAM("TEST_MAX", DEFAULT_TEST_MAX);
-	p.num_tests = 1 + p.time_steps / p.test_interval;
+	p.num_tests = p.time_steps / p.test_interval;
 	if (p.test_interval > p.time_steps) p.test_interval = p.time_steps;
 	
 	p.restart_interval = GET_PARAM("RESTART_INTERVAL", p.test_interval);
@@ -167,11 +167,11 @@ PARAMS read_params(int argc, const char **argv)
 //	p.chunks_per_share = p.sharing_interval / p.chunk_interval;
 	p.chunks_per_restart = p.restart_interval / p.chunk_interval;
 		
-	p.state_size = STATE_SIZE;		// x and x'
-	p.num_actions = NUM_ACTIONS;	// left, none, and right
+//	p.state_size = STATE_SIZE;		// x and x'
+//	p.num_actions = NUM_ACTIONS;	// left, none, and right
 	
 	printf("[MCAR][HIDDEN_NODES%3d[TRIALS%7d][TIME_STEPS%7d][SHARE_BEST_PCT%7.4f][COPY_ALPHA_MULTIPLIER%7.4f][AGENT_GROUP_SIZE%7d][ALPHA%7.4f]"
-		   "[EPSILON%7.4f][GAMMA%7.4f][LAMBDA%7.4f][TEST_INTERVAL%7d][TEST_REPS%7d][TEST_MAX%7d][RESTART_INTERVAL%7d][CHUNK_INTERVAL%7d]", p.hidden_nodes, p.trials, p.time_steps, p.share_best_pct, p.copy_alpha_multiplier, p.agent_group_size, p.alpha, p.epsilon, p.gamma, p.lambda, p.test_interval, p.test_reps, p.test_max, p.restart_interval, p.chunk_interval);
+		   "[EPSILON%7.4f][GAMMA%7.4f][LAMBDA%7.4f][TEST_INTERVAL%7d][TEST_REPS%7d][TEST_MAX%7d][RESTART_INTERVAL%7d][CHUNK_INTERVAL%7d]", NUM_HIDDEN, p.trials, p.time_steps, p.share_best_pct, p.copy_alpha_multiplier, p.agent_group_size, p.alpha, p.epsilon, p.gamma, p.lambda, p.test_interval, p.test_reps, p.test_max, p.restart_interval, p.chunk_interval);
 
 	if (p.share_compete) printf("[SHARE_COMPETE]");
 	if (p.share_fitness) printf("[SHARE_FITNESS]");
@@ -180,8 +180,8 @@ PARAMS read_params(int argc, const char **argv)
 	
 	// aliases
 	p.stride = p.agents;
-	p.num_hidden = p.hidden_nodes;
-	p.num_states = p.state_size;
+//	p.num_hidden = p.hidden_nodes;
+//	p.num_states = p.state_size;
 	
 	return p;
 }
@@ -216,7 +216,7 @@ int main(int argc, const char **argv)
 		delete_GPU_result_list();
 
 #ifdef DUMP_FINAL_AGENTS
-		dump_agentsGPU("Final agents on GPU", agGPU);
+		dump_agentsGPU("Final agents on GPU", agGPU, 1);
 #endif
 		free_agentsGPU(agGPU);
 	}

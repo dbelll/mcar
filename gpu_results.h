@@ -27,5 +27,7 @@ typedef struct {
 void prepare_GPU_result_list(unsigned size_est, unsigned dumpUpdates);
 void delete_GPU_result_list();
 
-void add_to_GPU_result_list(AGENT_DATA *agGPU, unsigned iBest, unsigned t);
+void add_to_GPU_result_list(AGENT_DATA *agGPU, unsigned iBest, unsigned t, float fitness);
 void dump_GPU_result_list();
+float last_fitness_on_GPU_result_list();
+unsigned last_agent_on_GPU_result_list();

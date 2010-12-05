@@ -41,7 +41,7 @@ void grow_gpu_result_list()
 }
 
 // add this agent to the new results array
-void add_to_GPU_result_list(AGENT_DATA *agGPU, unsigned iBest, unsigned t)
+void add_to_GPU_result_list(AGENT_DATA *agGPU, unsigned iBest, unsigned t, float fitness)
 {
 	if (!_rl) exit(-1);
 	
@@ -54,7 +54,8 @@ void add_to_GPU_result_list(AGENT_DATA *agGPU, unsigned iBest, unsigned t)
 	// fill in the structure
 	gpur->time_step = t;
 	gpur->agent = iBest;
-	CUDA_SAFE_CALL(cudaMemcpy(&gpur->fitness, agGPU->fitness + iBest, sizeof(float), cudaMemcpyDeviceToHost));
+//	CUDA_SAFE_CALL(cudaMemcpy(&gpur->fitness, agGPU->fitness + iBest, sizeof(float), cudaMemcpyDeviceToHost));
+	gpur->fitness = fitness;
 
 	if (_rl->dumpUpdates) 
 		printf("\n--> %4d is new best agent with fitness of%8.2f   ", iBest, gpur->fitness / NUM_TOT_DIV);
@@ -78,3 +79,16 @@ void dump_GPU_result_list()
 		printf("[timestep =%9d][agent =%4d][fitness =%8.3f]\n", gpur->time_step, gpur->agent, gpur->fitness / NUM_TOT_DIV);
 	}
 }
+
+float last_fitness_on_GPU_result_list()
+{
+	if (_rl->next == 0) return 9999.0f;
+	return _rl->results[_rl->next-1].fitness / NUM_TOT_DIV;
+}
+
+unsigned last_agent_on_GPU_result_list()
+{
+	if (_rl->next == 0) return 999999;
+	return _rl->results[_rl->next-1].agent;
+}
+
