@@ -64,6 +64,7 @@
 #define DEFAULT_LAMBDA 0.70f
 
 #define DEFAULT_SHARE_BEST_PCT 0.50f
+#define DEFAULT_SHARE_ALWAYS_PCT 0.00f
 
 #define DEFAULT_TEST_REPS 10
 #define DEFAULT_TEST_MAX 1000
@@ -93,10 +94,13 @@ typedef struct{
 	unsigned agent_group_size;	// number of agents in a group that will work toward one solution
 	
 //	unsigned sharing_interval;	// number of time steps agents work independently before sharing
-	float share_best_pct;	// the probability of beling replaced by the best agent during sharing
+	float share_best_pct;		// the probability of beling replaced by the best agent during
+								// sharing, applies only when there is a new best agent
+	float share_always_pct;		// the probability of beling replaced by the best agent during
+								// sharing, applies when the best agent has not changed
 	unsigned share_compete;		// flag to indicate that competition is used for sharing
 	unsigned share_fitness;		// flag to indicate that fitness is used for sharing
-	unsigned share_always;		// flag indicates that the best agent is always shared with losers, even when it has not changed from the previous best agent.
+//	unsigned share_always;		// flag indicates that the best agent is always shared with losers, even when it has not changed from the previous best agent.
 	float copy_alpha_multiplier;	// copied agent's alpha is the normal alpha times this factor
 	unsigned agents;			// total number of agents = agent_group_size * trials
 	unsigned num_sharing_intervals;	// number of sharing intervals = timp_steps / sharing_interval
