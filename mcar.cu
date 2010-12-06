@@ -610,6 +610,26 @@ DUAL_PREFIX float choose_action2(float *s, unsigned *pAction, float *theta, floa
 	}
 }
 
+DUAL_PREFIX float choose_action2ARG(float *s_s, unsigned *s_seeds, unsigned idx)
+{
+	float *s = s_s + idx;
+	unsigned *seeds = s_seeds + idx;
+	unsigned *pAction = seeds + 4*LEARN_BLOCK_SIZE;
+	float *theta = s + 3*LEARN_BLOCK_SIZE;
+	float *activation = s + 33*LEARN_BLOCK_SIZE;
+	
+	unsigned stride_s = LEARN_BLOCK_SIZE;
+	if (dc_epsilon > 0.0f && RandUniform(seeds, stride_s) < dc_epsilon){
+		// choose random action
+		float r = RandUniform(seeds, stride_s);
+		*pAction = (unsigned)(r * NUM_ACTIONS);
+		return calc_Q2(s, *pAction, theta, LEARN_BLOCK_SIZE, NUM_HIDDEN, activation);
+	}else{
+		// choose the best action
+		return best_action2(s, pAction, theta, LEARN_BLOCK_SIZE, NUM_HIDDEN, activation);
+	}
+}
+
 //__device__ float choose_action3(unsigned idx, unsigned *s_u, float *s_f)
 //{
 //	if (dc_epsilon > 0.0f && RandUniform(s_u+idx, LEARN_BLOCK_SIZE) < dc_epsilon){
@@ -692,6 +712,7 @@ DUAL_PREFIX void randomize_state(float *s, unsigned *seeds, unsigned stride)
 //	s[0] = MIN_X + (MAX_X-MIN_X)*RandUniform(seeds, stride);
 //	s[stride] = MIN_VEL + (MAX_VEL-MIN_VEL)*RandUniform(seeds, stride);
 }
+
 
 //DUAL_PREFIX void randomize_state2(float *s, unsigned *seeds, unsigned stride_s, unsigned stride_g)
 //{
@@ -1426,23 +1447,44 @@ __global__ void learn_kernel(unsigned steps)
 
 	if (iGlobal >= dc_agents) return;
 	
-	__shared__ unsigned s_seeds[4*LEARN_BLOCK_SIZE];
-	__shared__ unsigned s_action[LEARN_BLOCK_SIZE];
-	__shared__ float s_s[2*LEARN_BLOCK_SIZE];
-	__shared__ float s_alpha[LEARN_BLOCK_SIZE];
-	__shared__ float s_theta[15*LEARN_BLOCK_SIZE];
-	__shared__ float s_W[15*LEARN_BLOCK_SIZE];
-	__shared__ float s_activation[LEARN_BLOCK_SIZE];
+	__shared__ unsigned s_seeds[5*LEARN_BLOCK_SIZE];
+	__shared__ float s_s[34*LEARN_BLOCK_SIZE];
+
+	unsigned *s_action = s_seeds + 4*LEARN_BLOCK_SIZE;
+	float *s_alpha = s_s + 2*LEARN_BLOCK_SIZE;
+	float *s_theta = s_s + 3*LEARN_BLOCK_SIZE;
+	float *s_W = s_s + 18*LEARN_BLOCK_SIZE;
+	float *s_activation = s_s + 33*LEARN_BLOCK_SIZE;
+	
+//	__shared__ unsigned s_seeds[4*LEARN_BLOCK_SIZE];
+//	__shared__ unsigned s_action[LEARN_BLOCK_SIZE];
+//	__shared__ float s_s[2*LEARN_BLOCK_SIZE];
+//	__shared__ float s_alpha[LEARN_BLOCK_SIZE];
+//	__shared__ float s_theta[15*LEARN_BLOCK_SIZE];
+//	__shared__ float s_W[15*LEARN_BLOCK_SIZE];
+//	__shared__ float s_activation[LEARN_BLOCK_SIZE];
 
 	// copy state, action, and seeds to shared memory
 	s_s[idx] = dc_ag.s[iGlobal];
 	s_s[idx + LEARN_BLOCK_SIZE] = dc_ag.s[iGlobal + dc_agents];
 	s_action[idx] = dc_ag.action[iGlobal];
-	s_seeds[idx] = dc_ag.seeds[iGlobal];
-	s_seeds[idx + LEARN_BLOCK_SIZE] = dc_ag.seeds[iGlobal + dc_agents];
-	s_seeds[idx + 2*LEARN_BLOCK_SIZE] = dc_ag.seeds[iGlobal + 2*dc_agents];
-	s_seeds[idx + 3*LEARN_BLOCK_SIZE] = dc_ag.seeds[iGlobal + 3*dc_agents];
-	s_alpha[idx] = dc_ag.alpha[iGlobal] * dc_ag.alphaOn[iGlobal];
+//	unsigned iG = iGlobal;
+//	unsigned ii = idx;
+	unsigned *sSeeds = s_seeds + idx;
+	unsigned *gSeeds = dc_ag.seeds + iGlobal;
+//	s_seeds[idx] = dc_ag.seeds[iGlobal];
+//	s_seeds[idx + LEARN_BLOCK_SIZE] = dc_ag.seeds[iGlobal + dc_agents];
+//	s_seeds[idx + 2*LEARN_BLOCK_SIZE] = dc_ag.seeds[iGlobal + 2*dc_agents];
+//	s_seeds[idx + 3*LEARN_BLOCK_SIZE] = dc_ag.seeds[iGlobal + 3*dc_agents];
+//	s_seeds[ii] = dc_ag.seeds[iG]; iG += dc_agents; ii += LEARN_BLOCK_SIZE;
+//	s_seeds[ii] = dc_ag.seeds[iG]; iG += dc_agents; ii += LEARN_BLOCK_SIZE;
+//	s_seeds[ii] = dc_ag.seeds[iG]; iG += dc_agents; ii += LEARN_BLOCK_SIZE;
+//	s_seeds[ii] = dc_ag.seeds[iG];
+	sSeeds[0] = gSeeds[0]; sSeeds+= LEARN_BLOCK_SIZE; gSeeds += dc_agents;
+	sSeeds[0] = gSeeds[0]; sSeeds+= LEARN_BLOCK_SIZE; gSeeds += dc_agents;
+	sSeeds[0] = gSeeds[0]; sSeeds+= LEARN_BLOCK_SIZE; gSeeds += dc_agents;
+	sSeeds[0] = gSeeds[0];
+	s_alpha[idx] = dc_ag.alpha[iGlobal];// * dc_ag.alphaOn[iGlobal];
 
 	// copy weights and gradients from global memory to shared memory
 	for (int i = 0, j=0; i < NUM_WGTS*LEARN_BLOCK_SIZE; i +=LEARN_BLOCK_SIZE, j += dc_agents) {
@@ -1455,24 +1497,23 @@ __global__ void learn_kernel(unsigned steps)
 	unsigned restart_counter = 0;
 	for (int t = 0; t < steps; t++, restart_counter--) {
 		// reset state at restart intervals
-//		float Q_curr;
 		if (0 == restart_counter) {
 			randomize_state(s_s + idx, s_seeds + idx, LEARN_BLOCK_SIZE);
 			choose_action2(s_s + idx, s_action + idx, s_theta + idx, s_activation + idx, s_seeds + idx);
+//			choose_action2ARG(s_s, s_seeds, idx);
 			calc_Q2(s_s + idx, s_action[idx], s_theta + idx, LEARN_BLOCK_SIZE, NUM_HIDDEN, s_activation + idx);
-//			calc_Q2M(s_s+idx, s_action[idx], s_theta+idx, LEARN_BLOCK_SIZE, NUM_HIDDEN, s_activation+idx)
 			reset_gradient(s_W + idx, LEARN_BLOCK_SIZE, NUM_WGTS);
 			restart_counter = dc_restart_interval;
 		}
 		
 		float Q_curr = calc_Q2(s_s + idx, s_action[idx], s_theta + idx, LEARN_BLOCK_SIZE, NUM_HIDDEN, s_activation + idx);
-//		calc_Q2M(s_s+idx, s_action[idx], s_theta+idx, LEARN_BLOCK_SIZE, NUM_HIDDEN, s_activation+idx)
 		accumulate_gradient2(s_s + idx, s_action[idx], s_theta + idx, s_activation + idx, s_W + idx);
 		float reward = take_action(s_s + idx, s_action[idx], s_s + idx, LEARN_BLOCK_SIZE, dc_accel);
 		unsigned success = terminal_state(s_s + idx);
 		
 		if (success) randomize_state(s_s + idx, s_seeds + idx, LEARN_BLOCK_SIZE);
 		float Q_next = choose_action2(s_s + idx, s_action + idx, s_theta + idx, s_activation + idx, s_seeds + idx);
+//		float Q_next = choose_action2ARG(s_s, s_seeds, idx);
 		float error = reward + dc_gamma * Q_next - Q_curr;
 		update_thetas2(s_theta + idx, s_W + idx, s_alpha[idx], error, s_activation + idx);
 		if (success) reset_gradient(s_W + idx, LEARN_BLOCK_SIZE, NUM_WGTS);
@@ -1480,10 +1521,18 @@ __global__ void learn_kernel(unsigned steps)
 	
 	// copy state, action and seeds back to global memory
 	dc_ag.action[iGlobal] = s_action[idx];
-	dc_ag.seeds[iGlobal] = s_seeds[idx];
-	dc_ag.seeds[iGlobal + dc_agents] = s_seeds[idx + LEARN_BLOCK_SIZE];
-	dc_ag.seeds[iGlobal + 2*dc_agents] = s_seeds[idx + 2*LEARN_BLOCK_SIZE];
-	dc_ag.seeds[iGlobal + 3*dc_agents] = s_seeds[idx + 3*LEARN_BLOCK_SIZE];
+//	iG = iGlobal;
+//	ii = idx;
+//	dc_ag.seeds[iG] = s_seeds[ii]; iG += dc_agents; ii += LEARN_BLOCK_SIZE;
+//	dc_ag.seeds[iG] = s_seeds[ii]; iG += dc_agents; ii += LEARN_BLOCK_SIZE;
+//	dc_ag.seeds[iG] = s_seeds[ii]; iG += dc_agents; ii += LEARN_BLOCK_SIZE;
+//	dc_ag.seeds[iG] = s_seeds[ii];
+	sSeeds = s_seeds + idx;
+	gSeeds = dc_ag.seeds + iGlobal;
+	gSeeds[0] = sSeeds[0]; gSeeds += dc_agents; sSeeds += LEARN_BLOCK_SIZE;
+	gSeeds[0] = sSeeds[0]; gSeeds += dc_agents; sSeeds += LEARN_BLOCK_SIZE;
+	gSeeds[0] = sSeeds[0]; gSeeds += dc_agents; sSeeds += LEARN_BLOCK_SIZE;
+	gSeeds[0] = sSeeds[0];
 
 	dc_ag.s[iGlobal] = s_s[idx];
 	dc_ag.s[iGlobal + dc_agents] = s_s[idx + LEARN_BLOCK_SIZE];
@@ -1505,10 +1554,13 @@ __global__ void share_best_kernel(float *d_agent_scores, float threshold, unsign
 	
 	if (idx >= dc_agents) return;
 
-	// if this is the best agent, set it's alpha to 0.0f to preserve
-	// otherwise reset the alpha
-	if (idx == iBest) dc_ag.alphaOn[idx] = 0;
-	else dc_ag.alphaOn[idx] = 1;
+//	// if this is the best agent, set it's alpha to 0.0f to preserve
+//	// otherwise reset the alpha
+//	if (idx == iBest) dc_ag.alphaOn[idx] = 0;
+//	else dc_ag.alphaOn[idx] = 1;
+
+	if (idx == iBest) dc_ag.alpha[idx] = 0.0f;
+	else dc_ag.alpha[idx] = dc_alpha;
 
 	// do nothing if agent has a better score than the threshold
 //	if (d_agent_scores[idx] >= 0.0f) return;
@@ -1544,8 +1596,11 @@ __global__ void calc_quality_kernel(unsigned iBest, unsigned maxSteps, float *d_
 	
 	// set up values in shared memory...
 	//    ... agent weights
+//	unsigned v_div = iGlobal / NUM_X_DIV;
 	float x_div_num = 0.5f + (float)(iGlobal % NUM_X_DIV);
 	float vel_div_num = 0.5f + (float)(iGlobal / NUM_X_DIV);
+//	float x_div_num = 0.25 + 0.5f*RandUniform(dc_ag.seeds+iBest, dc_agents) + (float)(iGlobal % NUM_X_DIV);
+//	float y_div_num = 0.25 + 0.5f*RandUniform(dc_ag.seeds+iBest, dc_agents) + (float)(iGlobal / NUM_X_DIV);
 	
 	if (idx < NUM_WGTS) s_theta[idx] = dc_ag.theta[iBest + idx * dc_agents];
 
