@@ -1258,6 +1258,7 @@ AGENT_DATA *initialize_agentsGPU(AGENT_DATA *agCPU)
 	ag->action = device_copyui(agCPU->action, _p.agents);
 	ag->fitness = device_copyf(agCPU->fitness, _p.agents);
 	ag->alpha = device_copyf(agCPU->alpha, _p.agents);
+	ag->alphaOn = device_alloc_filledui(_p.agents, 1);
 	
 //	cudaMemcpyToSymbol("dc_p", &_p, sizeof(PARAMS));
 	cudaMemcpyToSymbol("dc_agents", &_p.agents, sizeof(unsigned));	
@@ -1441,7 +1442,7 @@ __global__ void learn_kernel(unsigned steps)
 	s_seeds[idx + LEARN_BLOCK_SIZE] = dc_ag.seeds[iGlobal + dc_agents];
 	s_seeds[idx + 2*LEARN_BLOCK_SIZE] = dc_ag.seeds[iGlobal + 2*dc_agents];
 	s_seeds[idx + 3*LEARN_BLOCK_SIZE] = dc_ag.seeds[iGlobal + 3*dc_agents];
-	s_alpha[idx] = dc_ag.alpha[iGlobal];
+	s_alpha[idx] = dc_ag.alpha[iGlobal] * dc_ag.alphaOn[iGlobal];
 
 	// copy weights and gradients from global memory to shared memory
 	for (int i = 0, j=0; i < NUM_WGTS*LEARN_BLOCK_SIZE; i +=LEARN_BLOCK_SIZE, j += dc_agents) {
@@ -1506,8 +1507,8 @@ __global__ void share_best_kernel(float *d_agent_scores, float threshold, unsign
 
 	// if this is the best agent, set it's alpha to 0.0f to preserve
 	// otherwise reset the alpha
-	if (idx == iBest) dc_ag.alpha[idx] = 0.0f;
-	else dc_ag.alpha[idx] = dc_alpha;
+	if (idx == iBest) dc_ag.alphaOn[idx] = 0;
+	else dc_ag.alphaOn[idx] = 1;
 
 	// do nothing if agent has a better score than the threshold
 //	if (d_agent_scores[idx] >= 0.0f) return;
@@ -2045,7 +2046,7 @@ void run_GPU(AGENT_DATA *agGPU)
 	PRINT_TIME(timeCalcFitness, "calc fitness time");
 
 #ifdef DUMP_FINAL_AGENTS
-	dump_agents_GPU("--------------------------------------\n       Ending Agent States\n", agGPU);
+	dump_agentsGPU("--------------------------------------\n       Ending Agent States\n", agGPU, 1);
 #endif
 	if (_p.dump_best){
 		dump_one_agentGPU("Best Agent on GPU:", agGPU, last_agent_on_GPU_result_list(), 1);
