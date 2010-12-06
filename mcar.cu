@@ -1522,7 +1522,7 @@ __global__ void share_best_kernel(float *d_agent_scores, float threshold, unsign
 			dc_ag.theta[idx + i * dc_agents] = dc_ag.theta[iBest + i * dc_agents];
 		}
 		float k = dc_copy_alpha_multiplier;
-		if (r < share_pct / 4.0f) k = 1.0f / k;
+		if (r < share_pct / 2.0f) k = 1.0f / k;
 		dc_ag.alpha[idx] = dc_ag.alpha[iBest] * k;
 	}
 }
