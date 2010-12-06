@@ -83,6 +83,12 @@ float *device_allocf(unsigned count_data)
 	return d_data;
 }
 
+__global__ void fillui_kernel(unsigned *d_data, unsigned count, unsigned val)
+{
+	unsigned iGlobal = threadIdx.x + blockIdx.x * blockDim.x;
+	if (iGlobal < count) d_data[iGlobal] = val;
+}
+
 unsigned *device_allocui(unsigned count_data)
 {
 	unsigned *d_data;
@@ -90,6 +96,22 @@ unsigned *device_allocui(unsigned count_data)
 		printf("[device_allocui] count = %d", count_data);
 	#endif
 	CUDA_SAFE_CALL(cudaMalloc((void **)&d_data, count_data * sizeof(unsigned)));
+	#ifdef TRACE_DEVICE_ALLOCATIONS
+		printf(" at %p\n", d_data);
+	#endif
+	return d_data;
+}
+
+unsigned *device_alloc_filledui(unsigned count_data, unsigned val)
+{
+	unsigned *d_data;
+	#ifdef TRACE_DEVICE_ALLOCATIONS
+		printf("[device_allocui] count = %d", count_data);
+	#endif
+	CUDA_SAFE_CALL(cudaMalloc((void **)&d_data, count_data * sizeof(unsigned)));
+	dim3 blockDim(512);
+	dim3 gridDim(1 + (count_data-1)/512);
+	fillui_kernel<<<gridDim, blockDim>>>(d_data, count_data, val);
 	#ifdef TRACE_DEVICE_ALLOCATIONS
 		printf(" at %p\n", d_data);
 	#endif

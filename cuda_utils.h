@@ -71,6 +71,7 @@ unsigned *device_copyui(unsigned *data, unsigned count);
 // returned pointer must be ultimately freed on the device
 float *device_allocf(unsigned count);
 unsigned *device_allocui(unsigned count);
+unsigned *device_alloc_filledui(unsigned count, unsigned val);
 
 // allocate room on the host and copy data from device, returning the host pointer
 // returned pointer must be ultimately freed on the host

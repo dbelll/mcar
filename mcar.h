@@ -180,6 +180,7 @@ typedef struct{
 	unsigned *action;	// temp storage for action to be taken at the next action
 	float *fitness;		// fitness value from last test
 	float *alpha;		// personal alpha value
+	unsigned *alphaOn;	// flag to indicate alpha should be turned on
 } AGENT_DATA;		// may hold either host or device pointers
 
 typedef struct{

@@ -206,9 +206,9 @@ int main(int argc, const char **argv)
 //		RESULTS *rCPU = initialize_results();
 		run_CPU(agCPU);
 //		if (!p.no_print) display_results("CPU:", rCPU);
-#ifdef DUMP_FINAL_AGENTS
-		dump_agents("Final agents on CPU", agCPU);
-#endif
+//#ifdef DUMP_FINAL_AGENTS
+//		dump_agents("Final agents on CPU", agCPU);
+//#endif
 	}
 	
 	if (p.run_on_GPU) {
