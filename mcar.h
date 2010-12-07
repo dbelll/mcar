@@ -14,7 +14,7 @@
 
 #define LEARN_BLOCK_SIZE 64				// used for learning kernel
 #define TEST3_BLOCK_SIZE 256			// used for test_kernel3 which runs the competition
-#define CALC_QUALITY_BLOCK_SIZE 512		// used for calc_all_quality kernel
+#define CALC_QUALITY_BLOCK_SIZE_PRELIM 512		// used for calc_all_quality kernel
 #define SHARE_BEST_BLOCK_SIZE 512		// used for share_best_kernel
 
 #define MIN_X (-1.2f)
@@ -47,8 +47,14 @@
 //#define CRUDE_NUM_VEL_DIV ((unsigned)(1.5f + (MAX_VEL - MIN_VEL) / CRUDE_DIV_VEL))
 #define CRUDE_NUM_TOT_DIV (CRUDE_NUM_X_DIV * CRUDE_NUM_VEL_DIV)
 
+#if CRUDE_NUM_TOT_DIV < CALC_QUALITY_BLOCK_SIZE_PRELIM
+#define CALC_QUALITY_BLOCK_SIZE CRUDE_NUM_TOT_DIV
+#else
+#define CALC_QUALITY_BLOCK_SIZE CALC_QUALITY_BLOCK_SIZE_PRELIM
+#endif
 
-#define MAX_STEPS_FOR_QUALITY 500		// used when calc'ing quality for all agents (no compete)
+
+#define MAX_STEPS_FOR_QUALITY 300		// used when calc'ing quality for all agents (no compete)
 #define FINAL_QUALITY_MAX_STEPS 2000		// used for recording winner quality on the AGENT_DATA, and
 										// to test if the competition winner is better than current best
 

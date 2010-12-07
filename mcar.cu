@@ -1710,7 +1710,7 @@ void describe_crude_divs()
 
 
 // calc the quality value for all agents
-unsigned calc_all_agents_quality(unsigned t, AGENT_DATA *agGPU, float *d_steps)
+unsigned share_after_fitCalc(unsigned t, AGENT_DATA *agGPU, float *d_steps)
 {
 	unsigned best_size = 1 + (_p.agents - 1)/(2*LEARN_BLOCK_SIZE);
 	if (NULL == d_bestVal) d_bestVal = (float *)device_allocf(best_size);
@@ -2054,7 +2054,7 @@ void run_GPU(AGENT_DATA *agGPU)
 //			device_dumpf("d_steps", d_steps, _p.agents, CRUDE_NUM_TOT_DIV);
 
 			CUDA_EVENT_START
-			iBest = calc_all_agents_quality((i+1) * _p.test_interval, agGPU, d_steps);
+			iBest = share_after_fitCalc((i+1) * _p.test_interval, agGPU, d_steps);
 			CUDA_EVENT_STOP(timeShare);
 //			dump_agentsGPU("after sharing", agGPU);
 		}
