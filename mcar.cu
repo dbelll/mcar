@@ -1717,28 +1717,9 @@ unsigned calc_all_agents_quality(unsigned t, AGENT_DATA *agGPU, float *d_steps)
 	if (NULL == d_iBest) d_iBest = (unsigned *)device_allocui(best_size);
 	if (NULL == h_iBest) h_iBest = (unsigned *)malloc(best_size * sizeof(unsigned));
 
-//  //	printf("[calc_all_agents_quality] at time step %d\n", t);
-  
 	// keep track of the best agent and its precies quality with static variables
 	static int iOldBest = -1;
 	static float oldBestQuality = BIG_FLOAT;
-
-	// total x coordinate is the index for the point in state space,
-	// the block's y dimension is the agent number
-	dim3 blockDim(CALC_QUALITY_BLOCK_SIZE);
-	dim3 gridDim(1 + (CRUDE_NUM_TOT_DIV-1)/CALC_QUALITY_BLOCK_SIZE, _p.agents);
-
-#ifdef VERBOSE
-	dump_agentsGPU("prior to calc_all_quality_kernel", agGPU, 1);
-#endif
-	PRE_KERNEL2("calc_all_quality_kernel", blockDim, gridDim);
-	calc_all_quality_kernel<<<gridDim, blockDim>>>(MAX_STEPS_FOR_QUALITY, d_steps);
-	POST_KERNEL("calc_all_quality_kernel");
-	
-//	describe_crude_divs();
-#ifdef VERBOSE
-	device_dumpf("d_steps", d_steps, _p.agents, CRUDE_NUM_TOT_DIV);
-#endif	
 
 	row_reduce(d_steps, CRUDE_NUM_TOT_DIV, _p.agents);
 	
@@ -1753,10 +1734,9 @@ unsigned calc_all_agents_quality(unsigned t, AGENT_DATA *agGPU, float *d_steps)
 	// have to copy the raw fitness value back to the agent data structure since
 	// it will be used to determine the worst agents that can be over-written with copy of best one
 	// use maximum blocksize
-	blockDim.x = _p.agents;
+	dim3 blockDim(_p.agents);
 	if (blockDim.x > 512) blockDim.x = 512;
-	gridDim.x = 1 + (_p.agents - 1) / blockDim.x;
-	gridDim.y = 1;
+	dim3 gridDim(1 + (_p.agents - 1) / blockDim.x);
 	PRE_KERNEL("copy_fitness_to_agent_kernel");
 	copy_fitness_to_agent_kernel<<<gridDim, blockDim>>>(d_steps);
 	POST_KERNEL("copy_fitness_to_agent_kernel");
@@ -2005,8 +1985,6 @@ void run_GPU(AGENT_DATA *agGPU)
 	if (_p.agents > 65535) printf("***** too many agents for round-robin competition *****");
 	dim3 test3GridDim(_p.agents, _p.agents);
 	
-	dim3 updateFitnessBlockDim(_p.agents);
-	dim3 updateFitnessGridDim(_p.agents);
 
 	// reset gradient kernel has total number of threads equal to the gradient values
 	dim3 resetGradientBlockDim(512);
@@ -2017,12 +1995,11 @@ void run_GPU(AGENT_DATA *agGPU)
 	}
 	
 	// set up timing values
-	CUDA_EVENTN_PREPARE(2);
-	float timeReset = 0.0f;	// reset the gradient
+	CUDA_EVENT_PREPARE;
 	float timeLearn = 0.0f;	// learning kernel
 	float timeTest = 0.0f;	// competition
 	float timeShare = 0.0f;	// all the work for sharing results (except the competition)
-	float timeCalcFitness = 0.0f;
+	float timeFitCalc = 0.0f;
 	
 	// testLogTime will hold the time recorded at the start of each test and at the end of the run
 	float *testLogTime = (float *)malloc(_p.num_tests*sizeof(float));
@@ -2039,44 +2016,57 @@ void run_GPU(AGENT_DATA *agGPU)
 		printf("\n**************************** main loop %d ************************\n", i);
 #endif
 		// do some learning
-		CUDA_EVENTN_START(0);
+		CUDA_EVENT_START;
 		PRE_KERNEL2("learn_kernel", learnBlockDim, learnGridDim);
 		learn_kernel<<<learnGridDim, learnBlockDim>>>(_p.test_interval);
 		POST_KERNEL("learn_kernel");
-		CUDA_EVENTN_STOP(timeLearn, 0);		
+		CUDA_EVENT_STOP(timeLearn);
 //		dump_agentsGPU("after learning session", agGPU);
 		
 		// run tests and sharing
 //		if (0 == ((i+1) % _p.chunks_per_test)) {
 		if (_p.share_compete) {
-//				printf("running competition...");
-			CUDA_EVENTN_START(0);
+//			printf("running competition...");
+			CUDA_EVENT_START;
 			PRE_KERNEL2("test_kernel3", test3BlockDim, test3GridDim);
 			test_kernel3<<<test3GridDim, test3BlockDim>>>(d_wins);
 			POST_KERNEL("test_kernel3");
-			CUDA_EVENTN_STOP(timeTest, 0);
-//				dump_agentsGPU("after testing, before sharing", agGPU);
+			CUDA_EVENT_STOP(timeTest);
+//			dump_agentsGPU("after testing, before sharing", agGPU);
 
-			CUDA_EVENTN_START(0)
+			CUDA_EVENT_START
 			share_after_competition((i+1) * _p.test_interval, agGPU, &iBest, d_wins, d_agent_scores, d_steps);
-			CUDA_EVENTN_STOP(timeShare, 0);
+			CUDA_EVENT_STOP(timeShare);
 //				dump_agentsGPU("after sharing", agGPU);
 		}else if (_p.share_fitness) {
-			CUDA_EVENTN_START(0)
+			// total x coordinate is the index for the point in state space,
+			// the block's y dimension is the agent number
+			dim3 fitCalcBlockDim(CALC_QUALITY_BLOCK_SIZE);
+			dim3 fitCalcGridDim(1 + (CRUDE_NUM_TOT_DIV-1)/CALC_QUALITY_BLOCK_SIZE, _p.agents);
+//			dump_agentsGPU("prior to calc_all_quality_kernel", agGPU, 1);
+			CUDA_EVENT_START
+			PRE_KERNEL2("calc_all_quality_kernel", fitCalcBlockDim, fitCalcGridDim);
+			calc_all_quality_kernel<<<fitCalcGridDim, fitCalcBlockDim>>>(MAX_STEPS_FOR_QUALITY, d_steps);
+			POST_KERNEL("calc_all_quality_kernel");
+			CUDA_EVENT_STOP(timeFitCalc);
+			
+			//	describe_crude_divs();
+//			device_dumpf("d_steps", d_steps, _p.agents, CRUDE_NUM_TOT_DIV);
+
+			CUDA_EVENT_START
 			iBest = calc_all_agents_quality((i+1) * _p.test_interval, agGPU, d_steps);
-			CUDA_EVENTN_STOP(timeCalcFitness, 0);
-//				dump_agentsGPU("after sharing", agGPU);
+			CUDA_EVENT_STOP(timeShare);
+//			dump_agentsGPU("after sharing", agGPU);
 		}
 	}
 	printf("\n");
 	
-	CUDA_EVENTN_CLEANUP;
+	CUDA_EVENT_CLEANUP;
 	STOP_TIMER(timerGPU, "total GPU time");
-	PRINT_TIME(timeReset, "reset_gradient_kernel time");
 	PRINT_TIME(timeLearn, "learn time");
 	PRINT_TIME(timeTest, "test time");
 	PRINT_TIME(timeShare, "share time");
-	PRINT_TIME(timeCalcFitness, "calc fitness time");
+	PRINT_TIME(timeFitCalc, "calc fitness time");
 
 #ifdef DUMP_FINAL_AGENTS
 	dump_agentsGPU("--------------------------------------\n       Ending Agent States\n", agGPU, 1);
