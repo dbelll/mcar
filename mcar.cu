@@ -610,26 +610,6 @@ DUAL_PREFIX float choose_action2(float *s, unsigned *pAction, float *theta, floa
 	}
 }
 
-DUAL_PREFIX float choose_action2ARG(float *s_s, unsigned *s_seeds, unsigned idx)
-{
-	float *s = s_s + idx;
-	unsigned *seeds = s_seeds + idx;
-	unsigned *pAction = seeds + 4*LEARN_BLOCK_SIZE;
-	float *theta = s + 3*LEARN_BLOCK_SIZE;
-	float *activation = s + 33*LEARN_BLOCK_SIZE;
-	
-	unsigned stride_s = LEARN_BLOCK_SIZE;
-	if (dc_epsilon > 0.0f && RandUniform(seeds, stride_s) < dc_epsilon){
-		// choose random action
-		float r = RandUniform(seeds, stride_s);
-		*pAction = (unsigned)(r * NUM_ACTIONS);
-		return calc_Q2(s, *pAction, theta, LEARN_BLOCK_SIZE, NUM_HIDDEN, activation);
-	}else{
-		// choose the best action
-		return best_action2(s, pAction, theta, LEARN_BLOCK_SIZE, NUM_HIDDEN, activation);
-	}
-}
-
 //__device__ float choose_action3(unsigned idx, unsigned *s_u, float *s_f)
 //{
 //	if (dc_epsilon > 0.0f && RandUniform(s_u+idx, LEARN_BLOCK_SIZE) < dc_epsilon){
@@ -1500,7 +1480,6 @@ __global__ void learn_kernel(unsigned steps)
 		if (0 == restart_counter) {
 			randomize_state(s_s + idx, s_seeds + idx, LEARN_BLOCK_SIZE);
 			choose_action2(s_s + idx, s_action + idx, s_theta + idx, s_activation + idx, s_seeds + idx);
-//			choose_action2ARG(s_s, s_seeds, idx);
 			calc_Q2(s_s + idx, s_action[idx], s_theta + idx, LEARN_BLOCK_SIZE, NUM_HIDDEN, s_activation + idx);
 			reset_gradient(s_W + idx, LEARN_BLOCK_SIZE, NUM_WGTS);
 			restart_counter = dc_restart_interval;
@@ -1513,7 +1492,6 @@ __global__ void learn_kernel(unsigned steps)
 		
 		if (success) randomize_state(s_s + idx, s_seeds + idx, LEARN_BLOCK_SIZE);
 		float Q_next = choose_action2(s_s + idx, s_action + idx, s_theta + idx, s_activation + idx, s_seeds + idx);
-//		float Q_next = choose_action2ARG(s_s, s_seeds, idx);
 		float error = reward + dc_gamma * Q_next - Q_curr;
 		update_thetas2(s_theta + idx, s_W + idx, s_alpha[idx], error, s_activation + idx);
 		if (success) reset_gradient(s_W + idx, LEARN_BLOCK_SIZE, NUM_WGTS);
