@@ -1,13 +1,16 @@
 #!/bin/bash
-# Testing script for resonance computer
+# Basline testing script for resonance computer
+#
+#   ./res_fit_restart.sh <agent_group_size> <restart_interval>
+#
 _time="--TIME_STEPS=1048576"
 _groups="--AGENT_GROUP_SIZE=$1"
 _restart="--RESTART_INTERVAL=$2"
-_test="--TEST_INTERVAL=$3 --TEST_REPS=32 --TEST_MAX=250"
-_share="--SHARE_BEST_PCT=0.50 --SHARE_ALWAYS_PCT=0.10 --SHARE_FITNESS --COPY_ALPHA_MULTIPLIER=0.2"
+_test="--TEST_INTERVAL=4096 --TEST_REPS=32 --TEST_MAX=250"
+_share="--SHARE_BEST_PCT=0.50 --SHARE_ALWAYS=0.00 --SHARE_FITNESS --COPY_ALPHA_MULTIPLIER=0.2"
 _theta="--INIT_THETA_MIN=-0.10 --INIT_THETA_MAX=0.10"
 
-_params="--ALPHA=0.20 --EPSILON=0.10 --GAMMA=0.95 --LAMBDA=0.5"
+_params="--ALPHA=0.20 --EPSILON=0.10 --GAMMA=0.95 --LAMBDA=0.2"
 
 _location="./bin/linux/release"
 
